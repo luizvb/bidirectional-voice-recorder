@@ -4,13 +4,12 @@ import { Logo } from './Logo';
 export default function Login({ onLogin }: { onLogin: () => void }) {
   return (
     <div className="w-full max-w-md p-8 glass rounded-2xl shadow-2xl flex flex-col items-center">
-      <div className="mb-6 shadow-[0_4px_32px_rgba(0,229,255,0.2)] rounded-full p-2 bg-black/50 border border-white/5">
-        <Logo className="w-12 h-12" />
+      <div className="mb-8 flex justify-center w-full">
+        <img src="/voxalogo.png" alt="Voxa" className="w-64 h-auto" />
       </div>
-      
-      <h1 className="text-2xl font-bold mb-2">Welcome to Voxa</h1>
+
       <p className="text-muted-foreground text-center mb-8">
-        The intelligence behind every conversation. Sign in to sync your sessions.
+        Sign in to sync your sessions and manage your workspace.
       </p>
 
       <div className="w-full space-y-4">

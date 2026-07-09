@@ -1,4 +1,6 @@
-# Voxa
+<div align="center">
+  <img src="docs/assets/voxalogo.png" alt="Voxa Logo" width="400" />
+</div>
 
 *The intelligence behind every conversation.*
 

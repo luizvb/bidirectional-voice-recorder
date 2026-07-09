@@ -20,6 +20,17 @@ test('package exposes build and test scripts for Go sidecar', () => {
   assert.match(pkg.scripts['test:go'], /go test/);
 });
 
+test('environment files are configured safely', () => {
+  const gitignore = fs.readFileSync(path.join(root, '.gitignore'), 'utf8');
+  const envExample = fs.readFileSync(path.join(root, '.env.example'), 'utf8');
+  const main = fs.readFileSync(path.join(root, 'app', 'main.js'), 'utf8');
+
+  assert.match(gitignore, /^\.env$/m);
+  assert.match(envExample, /^DEEPGRAM_API_KEY=your_deepgram_api_key$/m);
+  assert.match(main, /loadEnvFile/);
+  assert.match(main, /path\.join\(__dirname, '\.\.', '\.env'\)/);
+});
+
 test('renderer page allows local media playback and loads recorder controls', () => {
   const html = fs.readFileSync(path.join(root, 'app', 'index.html'), 'utf8');
   const preload = fs.readFileSync(path.join(root, 'app', 'preload.js'), 'utf8');

@@ -38,7 +38,8 @@ npm install
 Start the Electron app:
 
 ```bash
-export DEEPGRAM_API_KEY="your_deepgram_key"
+cp .env.example .env
+# edit .env and set DEEPGRAM_API_KEY
 npm run dev
 ```
 

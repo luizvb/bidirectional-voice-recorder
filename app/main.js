@@ -1,8 +1,12 @@
+const path = require('node:path');
+const { loadEnvFile } = require('./env-loader');
+
+loadEnvFile(path.join(__dirname, '..', '.env'));
+
 const { app, BrowserWindow, desktopCapturer, ipcMain, session, shell } = require('electron');
 const { spawnFile } = require('./sidecar');
 const { getRecording, getTranscript, listRecordings, recordingsRoot, saveRecording, saveTranscript } = require('./session-store');
 const { transcribeWithDeepgram } = require('./transcription-service');
-const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 function createWindow() {

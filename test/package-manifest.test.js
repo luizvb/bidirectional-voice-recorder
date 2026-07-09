@@ -23,11 +23,17 @@ test('package exposes build and test scripts for Go sidecar', () => {
 test('renderer page allows local media playback and loads recorder controls', () => {
   const html = fs.readFileSync(path.join(root, 'app', 'index.html'), 'utf8');
   const preload = fs.readFileSync(path.join(root, 'app', 'preload.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(root, 'app', 'renderer.js'), 'utf8');
 
   assert.match(html, /media-src 'self' file: blob:/);
   assert.match(html, /id="start"/);
+  assert.match(html, />Record</);
   assert.match(html, /id="historyList"/);
   assert.match(html, /<audio id="player" controls>/);
   assert.match(preload, /saveRecording/);
   assert.match(preload, /listRecordings/);
+  assert.match(renderer, /Preparing recording permissions/);
+  assert.match(renderer, /System audio unavailable; recording microphone only/);
+  assert.match(renderer, /audioContext.resume/);
+  assert.match(renderer, /mode: activeMode/);
 });

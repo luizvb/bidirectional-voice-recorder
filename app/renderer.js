@@ -17,6 +17,7 @@ let streams = [];
 let startedAt = 0;
 let timerHandle;
 let audioContext;
+let activeMode = 'mic';
 
 function show(value) {
   output.textContent = JSON.stringify(value, null, 2);
@@ -66,6 +67,8 @@ function preferredMimeType() {
 async function createCaptureStream() {
   audioContext = new AudioContext();
   const destination = audioContext.createMediaStreamDestination();
+  const warnings = [];
+
   const mic = await navigator.mediaDevices.getUserMedia({
     audio: {
       echoCancellation: true,
@@ -76,22 +79,35 @@ async function createCaptureStream() {
   audioContext.createMediaStreamSource(mic).connect(destination);
 
   if (includeSystem.checked) {
-    const system = await navigator.mediaDevices.getDisplayMedia({
-      audio: true,
-      video: {
-        width: 4,
-        height: 4,
-        frameRate: 1
+    try {
+      const system = await navigator.mediaDevices.getDisplayMedia({
+        audio: true,
+        video: {
+          width: 4,
+          height: 4,
+          frameRate: 1
+        }
+      });
+      streams.push(system);
+      if (system.getAudioTracks().length === 0) {
+        warnings.push('System audio unavailable; recording microphone only.');
+      } else {
+        activeMode = 'mic+system';
+        audioContext.createMediaStreamSource(system).connect(destination);
       }
-    });
-    streams.push(system);
-    if (system.getAudioTracks().length === 0) {
-      throw new Error('System audio was not available in the captured stream.');
+    } catch (error) {
+      warnings.push(`System audio unavailable; recording microphone only. ${error.message}`);
     }
-    audioContext.createMediaStreamSource(system).connect(destination);
   }
 
-  return destination.stream;
+  if (audioContext.state === 'suspended') {
+    await audioContext.resume();
+  }
+
+  return {
+    stream: destination.stream,
+    warnings
+  };
 }
 
 async function refreshHistory(selectId) {
@@ -134,7 +150,7 @@ async function finishRecording() {
   const saved = await window.recorder.saveRecording({
     name: sessionName.value || 'Untitled recording',
     durationMs,
-    mode: includeSystem.checked ? 'mic+system' : 'mic',
+    mode: activeMode,
     mimeType: blob.type || 'audio/webm',
     extension: 'webm',
     bytes
@@ -171,11 +187,17 @@ openFolder.addEventListener('click', async () => {
 });
 
 start.addEventListener('click', async () => {
+  start.disabled = true;
+  stop.disabled = true;
+  includeSystem.disabled = true;
+  setStatus('Preparing recording permissions');
+  activeMode = 'mic';
+
   try {
     chunks = [];
-    const stream = await createCaptureStream();
+    const capture = await createCaptureStream();
     const mimeType = preferredMimeType();
-    recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recorder = new MediaRecorder(capture.stream, mimeType ? { mimeType } : undefined);
 
     recorder.addEventListener('dataavailable', (event) => {
       if (event.data.size > 0) chunks.push(event.data);
@@ -188,15 +210,16 @@ start.addEventListener('click', async () => {
     });
 
     recorder.start(1000);
-    start.disabled = true;
     stop.disabled = false;
-    includeSystem.disabled = true;
-    setStatus(includeSystem.checked ? 'Recording microphone + system audio' : 'Recording microphone');
+    setStatus(capture.warnings.length > 0 ? capture.warnings.join(' ') : activeMode === 'mic+system' ? 'Recording microphone + system audio' : 'Recording microphone');
     startTimer();
   } catch (error) {
     stopStreams();
     show({ error: error.message });
-    setStatus('Recording permission failed');
+    start.disabled = false;
+    stop.disabled = true;
+    includeSystem.disabled = false;
+    setStatus(`Recording permission failed: ${error.message}`);
   }
 });
 

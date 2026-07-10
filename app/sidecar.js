@@ -3,10 +3,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 function resolveRecorderd() {
-  const local = path.join(__dirname, '..', 'bin', 'recorderd');
+  const executableName = process.platform === 'win32' ? 'recorderd.exe' : 'recorderd';
+  const local = path.join(__dirname, '..', 'bin', executableName);
   if (fs.existsSync(local)) return local;
 
-  const packaged = path.join(process.resourcesPath || '', 'recorderd');
+  const packaged = path.join(process.resourcesPath || '', executableName);
   if (packaged && fs.existsSync(packaged)) return packaged;
 
   throw new Error('recorderd binary not found; run npm run build:go first');

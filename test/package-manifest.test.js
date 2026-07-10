@@ -20,6 +20,39 @@ test('package exposes build and test scripts for Go sidecar', () => {
   assert.match(pkg.scripts['test:go'], /go test/);
 });
 
+test('package exposes macOS, Windows and Vercel Blob release scripts', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+
+  assert.match(pkg.scripts['release:mac'], /build-release\.mjs mac/);
+  assert.match(pkg.scripts['release:win'], /build-release\.mjs win/);
+  assert.match(pkg.scripts['release:publish'], /publish-release\.mjs/);
+  assert.deepEqual(pkg.build.files, ['app/**/*', 'dist/**/*', 'package.json', '!node_modules/**/*']);
+  assert.equal(pkg.build.mac.extraResources[0].to, 'recorderd');
+  assert.equal(pkg.build.win.extraResources[0].to, 'recorderd.exe');
+  assert.equal(pkg.build.extraResources[0].to, 'blob-client.cjs');
+});
+
+test('packaged app defaults to the stable production Vercel API', () => {
+  const releaseConfig = require('../app/release-config');
+
+  assert.equal(releaseConfig.resolveApiUrl({}), 'https://backend-lake-ten-68.vercel.app');
+  assert.equal(releaseConfig.resolveApiUrl({ VITE_API_URL: 'http://localhost:3000/' }), 'http://localhost:3000');
+  assert.equal(releaseConfig.resolveApiUrl({ VOXA_API_URL: 'https://api.example.com/' }), 'https://api.example.com');
+});
+
+test('recordings use direct Vercel Blob upload and remote playback URLs', () => {
+  const main = fs.readFileSync(path.join(root, 'app', 'main.js'), 'utf8');
+  const routes = fs.readFileSync(path.join(root, 'backend', 'src', 'routes', 'recordings.ts'), 'utf8');
+
+  assert.match(main, /@vercel\/blob\/client/);
+  assert.match(main, /handleUploadUrl: `\$\{API_URL\}\/api\/recordings\/upload`/);
+  assert.match(main, /multipart: true/);
+  assert.match(main, /playbackUrlFor/);
+  assert.match(routes, /memoryStorage/);
+  assert.match(routes, /createRecordingUploadToken/);
+  assert.doesNotMatch(routes, /\/tmp\//);
+});
+
 test('electron keeps the macOS Dock icon visible while the app is running', () => {
   const main = fs.readFileSync(path.join(root, 'app', 'main.js'), 'utf8');
 

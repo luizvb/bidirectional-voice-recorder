@@ -93,6 +93,63 @@ cp .env.example .env
 npm run dev
 ```
 
+## Desktop release (macOS + Windows)
+
+The packaged desktop app defaults to the stable production API at
+`https://backend-lake-ten-68.vercel.app`. Local development can keep using
+`VITE_API_URL=http://localhost:3000`; `VOXA_API_URL` is the explicit runtime
+override when needed.
+
+Recordings are uploaded directly from Electron to the public Vercel Blob store
+using multipart client uploads, then their metadata and playback URL are saved
+in Neon. This avoids Vercel Function request-size limits for long recordings.
+
+Build the installer for the current operating system:
+
+```bash
+npm run release
+```
+
+Build specific installers (the macOS DMG must be built on macOS):
+
+```bash
+npm run release:mac
+npm run release:win
+```
+
+On macOS, build both the universal DMG and a portable Windows x64 ZIP:
+
+```bash
+npm run release:all
+```
+
+Artifacts are written to `release/`. The macOS build contains a universal
+`recorderd` sidecar (Apple Silicon + Intel), while Windows contains
+`recorderd.exe` x64. Running `release:win` on Windows produces an NSIS `.exe`
+installer; cross-building Windows from macOS produces a portable `.zip` and
+does not require Rosetta or Wine.
+
+### Publish download links to Vercel Blob
+
+The linked Vercel project has a public `voxa-releases` Blob store. After the
+installers are built, publish them and generate `release/downloads.json`:
+
+```bash
+npm run release:publish
+```
+
+The script loads `BLOB_READ_WRITE_TOKEN` through `vercel env run`, uploads the
+installers below `releases/v<version>/`, updates `releases/latest.json`, and
+prints the public download URLs. No Blob token is written into the repository.
+
+To sync the allowlisted values from `backend/.env` to the linked Vercel
+production project and redeploy the API:
+
+```bash
+npm run vercel:env:sync
+cd backend && vercel deploy --prod --yes
+```
+
 ## Architecture & Under the hood
 
 Electron app with a Go sidecar (`recorderd`) for recording microphone and system audio sessions.

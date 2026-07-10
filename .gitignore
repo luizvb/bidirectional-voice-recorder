@@ -2,7 +2,11 @@ bin/
 tmp/
 node_modules/
 dist/
+release/
+release-assets/
 *.log
 .env
 .env.local
 .env.*.local
+.vercel
+.agents

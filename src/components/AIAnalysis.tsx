@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { Target, MessageCircle, BarChart3, TrendingUp, CheckCircle, BrainCircuit, Activity } from 'lucide-react';
 import clsx from 'clsx';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface AIAnalysisProps {
   analysis: any;
 }
 
 export default function AIAnalysis({ analysis }: AIAnalysisProps) {
+  const { t } = useLanguage();
+  
   if (!analysis || !analysis.speakers || analysis.speakers.length === 0) {
-    return <div className="p-8 text-center text-white/50">No analysis data available.</div>;
+    return <div className="p-8 text-center text-white/50">{t('ai', 'noData')}</div>;
   }
 
   const [activeSpeaker, setActiveSpeaker] = useState(analysis.speakers[0].id);
@@ -32,22 +35,22 @@ export default function AIAnalysis({ analysis }: AIAnalysisProps) {
       {/* Summary Card */}
       <div className="bg-[#1C1C1E] border border-white/5 rounded-2xl p-6 shadow-xl">
         <h3 className="text-sm font-bold uppercase tracking-wider text-white/40 mb-4 flex items-center gap-2">
-          <Target className="w-4 h-4" /> Conversation Overview
+          <Target className="w-4 h-4" /> {t('ai', 'overview')}
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div>
-            <div className="text-xs text-white/30 mb-1 uppercase font-bold tracking-wider">Primary Intent</div>
-            <p className="text-white/90 text-sm leading-relaxed">{analysis.summary?.intent}</p>
+            <div className="text-xs text-white/30 mb-1 uppercase font-bold tracking-wider">{t('ai', 'primaryIntent')}</div>
+            <p className="text-white/90 text-sm leading-relaxed break-anywhere">{analysis.summary?.intent}</p>
           </div>
           <div>
-            <div className="text-xs text-white/30 mb-1 uppercase font-bold tracking-wider">Summary</div>
-            <p className="text-white/80 text-sm leading-relaxed">{analysis.summary?.overview}</p>
+            <div className="text-xs text-white/30 mb-1 uppercase font-bold tracking-wider">{t('ai', 'summary')}</div>
+            <p className="text-white/80 text-sm leading-relaxed break-anywhere">{analysis.summary?.overview}</p>
           </div>
         </div>
       </div>
 
       {/* Speaker Selector */}
-      <div className="flex items-center gap-2 border-b border-white/10 pb-4">
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 border-b border-white/10 pb-4">
         {analysis.speakers.map((s: any) => (
           <button
             key={s.id}
@@ -65,59 +68,59 @@ export default function AIAnalysis({ analysis }: AIAnalysisProps) {
       </div>
 
       {/* Speaker Details */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
         {/* Proficiency Radar */}
-        <div className="lg:col-span-1 flex flex-col space-y-6">
+        <div className="md:col-span-1 flex flex-col space-y-6">
           <div className="bg-[#1C1C1E] border border-white/5 rounded-2xl p-6 shadow-xl flex flex-col items-center justify-center text-center">
-            <div className="text-xs font-bold uppercase tracking-widest text-white/40 mb-3">CEFR Level</div>
-            <div className={clsx("w-32 h-32 rounded-full flex items-center justify-center border-4 text-5xl font-black shadow-2xl", getLevelColor(speaker.proficiency?.level))}>
+            <div className="text-xs font-bold uppercase tracking-widest text-white/40 mb-3">{t('ai', 'cefrLevel')}</div>
+            <div className={clsx("w-24 h-24 sm:w-32 sm:h-32 rounded-full flex items-center justify-center border-4 text-4xl sm:text-5xl font-black shadow-2xl", getLevelColor(speaker.proficiency?.level))}>
               {speaker.proficiency?.level || '?'}
             </div>
           </div>
 
           <div className="bg-[#1C1C1E] border border-white/5 rounded-2xl p-6 shadow-xl">
             <h3 className="text-sm font-bold uppercase tracking-wider text-white/40 mb-4 flex items-center gap-2">
-              <BrainCircuit className="w-4 h-4" /> Behavioral NLP
+              <BrainCircuit className="w-4 h-4" /> {t('ai', 'behavioralNlp')}
             </h3>
-            <p className="text-white/80 text-sm leading-relaxed">
+            <p className="text-white/80 text-sm leading-relaxed break-anywhere">
               {speaker.nlp}
             </p>
           </div>
         </div>
 
         {/* Detailed Metrics */}
-        <div className="lg:col-span-2 flex flex-col space-y-6">
+        <div className="md:col-span-2 flex flex-col space-y-6">
           <div className="bg-[#1C1C1E] border border-white/5 rounded-2xl p-6 shadow-xl">
             <h3 className="text-sm font-bold uppercase tracking-wider text-white/40 mb-6 flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" /> Proficiency Breakdown
+              <BarChart3 className="w-4 h-4" /> {t('ai', 'proficiencyBreakdown')}
             </h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase text-white/30"><Activity className="w-3 h-3"/> Range (Vocab)</div>
-                <p className="text-white/80 text-sm leading-relaxed">{speaker.proficiency?.range}</p>
+                <div className="flex items-center gap-2 text-xs font-bold uppercase text-white/30"><Activity className="w-3 h-3"/> {t('ai', 'range')}</div>
+                <p className="text-white/80 text-sm leading-relaxed break-anywhere">{speaker.proficiency?.range}</p>
               </div>
               <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase text-white/30"><CheckCircle className="w-3 h-3"/> Accuracy</div>
-                <p className="text-white/80 text-sm leading-relaxed">{speaker.proficiency?.accuracy}</p>
+                <div className="flex items-center gap-2 text-xs font-bold uppercase text-white/30"><CheckCircle className="w-3 h-3"/> {t('ai', 'accuracy')}</div>
+                <p className="text-white/80 text-sm leading-relaxed break-anywhere">{speaker.proficiency?.accuracy}</p>
               </div>
               <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase text-white/30"><TrendingUp className="w-3 h-3"/> Fluency</div>
-                <p className="text-white/80 text-sm leading-relaxed">{speaker.proficiency?.fluency}</p>
+                <div className="flex items-center gap-2 text-xs font-bold uppercase text-white/30"><TrendingUp className="w-3 h-3"/> {t('ai', 'fluency')}</div>
+                <p className="text-white/80 text-sm leading-relaxed break-anywhere">{speaker.proficiency?.fluency}</p>
               </div>
               <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase text-white/30"><MessageCircle className="w-3 h-3"/> Interaction</div>
-                <p className="text-white/80 text-sm leading-relaxed">{speaker.proficiency?.interaction}</p>
+                <div className="flex items-center gap-2 text-xs font-bold uppercase text-white/30"><MessageCircle className="w-3 h-3"/> {t('ai', 'interaction')}</div>
+                <p className="text-white/80 text-sm leading-relaxed break-anywhere">{speaker.proficiency?.interaction}</p>
               </div>
             </div>
           </div>
 
           <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-2xl p-6 shadow-xl">
             <h3 className="text-sm font-bold uppercase tracking-wider text-blue-400 mb-2">
-              Actionable Feedback
+              {t('ai', 'actionableFeedback')}
             </h3>
-            <p className="text-white/90 text-sm leading-relaxed">
+            <p className="text-white/90 text-sm leading-relaxed break-anywhere">
               {speaker.feedback}
             </p>
           </div>

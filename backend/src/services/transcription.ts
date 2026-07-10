@@ -94,14 +94,23 @@ export async function transcribeWithDeepgram(input: TranscriptionInput): Promise
     throw new Error('Missing DEEPGRAM_API_KEY. Set it in your shell before running the app.');
   }
 
-  const audio = await fs.readFile(filePath);
+  let audio: Buffer;
+  if (/^https:\/\//i.test(filePath)) {
+    const audioResponse = await fetch(filePath);
+    if (!audioResponse.ok) {
+      throw new Error(`Could not download recording from Vercel Blob (${audioResponse.status}).`);
+    }
+    audio = Buffer.from(await audioResponse.arrayBuffer());
+  } else {
+    audio = await fs.readFile(filePath);
+  }
   const response = await fetch(createDeepgramUrl({ maxQuality }), {
     method: 'POST',
     headers: {
       Authorization: `Token ${apiKey}`,
       'Content-Type': mimeType || 'audio/webm'
     },
-    body: audio
+    body: Uint8Array.from(audio).buffer
   });
 
   const body = await response.json().catch(() => ({}));

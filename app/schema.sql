@@ -1,6 +1,10 @@
 CREATE TABLE IF NOT EXISTS users (
   id VARCHAR(255) PRIMARY KEY,
   email VARCHAR(255),
+  stripe_customer_id VARCHAR(255) UNIQUE,
+  stripe_subscription_id VARCHAR(255) UNIQUE,
+  subscription_status VARCHAR(50) DEFAULT 'inactive',
+  subscription_price_id VARCHAR(255),
   created_at TIMESTAMP DEFAULT NOW()
 );
 

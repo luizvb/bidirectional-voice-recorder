@@ -5,15 +5,18 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import fs from 'fs';
 import recordingsRouter from './routes/recordings';
+import stripeRouter from './routes/stripe';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
-}
+// uploads directory creation removed for Vercel
 
 app.use(cors());
+
+// Mount Stripe router before express.json() so webhooks can use express.raw()
+app.use('/api/stripe', stripeRouter);
+
 app.use(express.json());
 
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -23,6 +26,10 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.use('/api/recordings', recordingsRouter);
 
-app.listen(PORT, () => {
-  console.log(`Voxa API running on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`Voxa API running on port ${PORT}`);
+  });
+}
+
+export default app;

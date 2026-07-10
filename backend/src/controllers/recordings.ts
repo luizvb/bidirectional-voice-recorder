@@ -1,4 +1,6 @@
 import { Request, Response } from 'express';
+import { del, put } from '@vercel/blob';
+import { handleUpload, HandleUploadBody } from '@vercel/blob/client';
 import db from '../config/db';
 import { transcribeWithDeepgram } from '../services/transcription';
 import { analyzeTranscriptWithOpenRouter } from '../services/llm';
@@ -11,34 +13,121 @@ async function ensureUser(userId: string): Promise<void> {
   `, [userId, 'unknown@auth0']);
 }
 
+function safePathSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128) || 'local-user';
+}
+
+function isRecordingBlobUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:'
+      && url.hostname.endsWith('.blob.vercel-storage.com')
+      && url.pathname.startsWith('/recordings/');
+  } catch {
+    return false;
+  }
+}
+
+export const createRecordingUploadToken = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = safePathSegment(req.user?.id || 'local-user');
+    const result = await handleUpload({
+      request: req,
+      body: req.body as HandleUploadBody,
+      onBeforeGenerateToken: async (pathname) => {
+        if (!pathname.startsWith(`recordings/${userId}/`)) {
+          throw new Error('Invalid recording upload path.');
+        }
+
+        return {
+          allowedContentTypes: ['audio/*', 'video/webm'],
+          maximumSizeInBytes: 1024 * 1024 * 1024,
+          addRandomSuffix: false,
+          allowOverwrite: true,
+          cacheControlMaxAge: 60
+        };
+      },
+      onUploadCompleted: async () => {
+        // Metadata is registered by POST /api/recordings after the direct upload resolves.
+      }
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error creating recording upload token:', error);
+    res.status(400).json({ error: error.message || 'Could not create upload token.' });
+  }
+};
+
 export const uploadRecording = async (req: Request, res: Response): Promise<void> => {
+  let uploadedBlobUrl: string | null = null;
   try {
     const userId = req.user?.id || 'local-user';
     await ensureUser(userId);
 
-    const { id, name, durationMs, mode, mimeType, createdAt } = req.body;
-    
-    if (!req.file) {
-      res.status(400).json({ error: 'No audio file uploaded.' });
+    const { id, name, durationMs, mode, mimeType, createdAt, blobUrl } = req.body;
+    const sessionId = id || Date.now().toString();
+
+    if (!req.file && !blobUrl) {
+      res.status(400).json({ error: 'No audio file or Blob URL provided.' });
       return;
     }
-    
-    const recordingPath = req.file.path;
-    const sizeBytes = req.file.size;
-    const sessionId = id || Date.now().toString();
+
+    if (blobUrl && !isRecordingBlobUrl(blobUrl)) {
+      res.status(400).json({ error: 'Invalid recording Blob URL.' });
+      return;
+    }
+
+    if (req.file) {
+      const extension = req.file.mimetype.includes('webm') ? 'webm' : 'audio';
+      const blob = await put(
+        `recordings/${safePathSegment(userId)}/${safePathSegment(sessionId)}.${extension}`,
+        req.file.buffer,
+        {
+          access: 'public',
+          contentType: req.file.mimetype || 'audio/webm',
+          addRandomSuffix: false,
+          allowOverwrite: true
+        }
+      );
+      uploadedBlobUrl = blob.url;
+    } else {
+      uploadedBlobUrl = blobUrl;
+    }
+
+    const sizeBytes = req.file?.size || Number(req.body.sizeBytes) || 0;
+    const effectiveMimeType = mimeType || req.file?.mimetype || 'audio/webm';
 
     await db.query(`
       INSERT INTO recordings (id, user_id, name, duration_ms, size_bytes, mode, local_file_path, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
         duration_ms = EXCLUDED.duration_ms,
-        size_bytes = EXCLUDED.size_bytes
-    `, [sessionId, userId, name, durationMs, sizeBytes, mode, recordingPath, createdAt || new Date().toISOString()]);
+        size_bytes = EXCLUDED.size_bytes,
+        mode = EXCLUDED.mode,
+        local_file_path = EXCLUDED.local_file_path
+    `, [sessionId, userId, name, durationMs, sizeBytes, mode, uploadedBlobUrl, createdAt || new Date().toISOString()]);
 
-    res.status(201).json({ id: sessionId, name, durationMs, mode, mimeType, sizeBytes, file: recordingPath });
+    res.status(201).json({
+      id: sessionId,
+      name,
+      durationMs,
+      mode,
+      mimeType: effectiveMimeType,
+      sizeBytes,
+      file: uploadedBlobUrl,
+      playbackUrl: uploadedBlobUrl
+    });
   } catch (error: any) {
     console.error('Error saving recording:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    if (uploadedBlobUrl && isRecordingBlobUrl(uploadedBlobUrl)) {
+      await del(uploadedBlobUrl).catch((cleanupError) => {
+        console.error('Error cleaning up orphaned recording Blob:', cleanupError);
+      });
+    }
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 };
 
@@ -54,6 +143,7 @@ export const listRecordings = async (req: Request, res: Response): Promise<void>
       durationMs: r.duration_ms,
       mode: r.mode,
       file: r.local_file_path,
+      playbackUrl: r.local_file_path,
       sizeBytes: r.size_bytes
     }));
     

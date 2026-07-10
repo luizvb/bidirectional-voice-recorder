@@ -1,28 +1,61 @@
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { loadEnvFile } = require('./env-loader');
+const { resolveApiUrl } = require('./release-config');
 
 loadEnvFile(path.join(__dirname, '..', '.env'));
 
 const { app, BrowserWindow, desktopCapturer, ipcMain, session, shell, protocol, net, Tray, Menu, globalShortcut, nativeImage } = require('electron');
+const { upload } = app.isPackaged
+  ? require(path.join(process.resourcesPath, 'blob-client.cjs'))
+  : require('@vercel/blob/client');
 
 let tray = null;
 let isQuitting = false;
 let mainWindow = null;
 let widgetWindow = null;
-const DEFAULT_RECORD_SHORTCUT = 'Option+Space';
-const SHORTCUT_OPTIONS = ['Option+Space', 'CommandOrControl+Shift+Space', 'Option+R'];
+const DEFAULT_RECORD_SHORTCUT = process.platform === 'darwin'
+  ? 'Option+Space'
+  : 'CommandOrControl+Shift+Space';
+const SHORTCUT_OPTIONS = process.platform === 'darwin'
+  ? ['Option+Space', 'CommandOrControl+Shift+Space', 'Option+R']
+  : ['CommandOrControl+Shift+Space', 'Alt+R', 'Alt+Space'];
 let recordShortcut = DEFAULT_RECORD_SHORTCUT;
 let registeredRecordShortcut = null;
 const { spawnFile } = require('./sidecar');
-const API_URL = process.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = resolveApiUrl();
+const API_TIMEOUT_MS = 20_000;
 const { pathToFileURL } = require('node:url');
+const requestedWindowWidth = Number.parseInt(process.env.VOXA_WINDOW_WIDTH || '', 10);
+const requestedWindowHeight = Number.parseInt(process.env.VOXA_WINDOW_HEIGHT || '', 10);
+const MAIN_WINDOW_WIDTH = Number.isFinite(requestedWindowWidth) ? Math.max(800, requestedWindowWidth) : 1024;
+const MAIN_WINDOW_HEIGHT = Number.isFinite(requestedWindowHeight) ? Math.max(600, requestedWindowHeight) : 768;
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'local-media', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true } }
 ]);
 
 const dockIconPath = path.join(__dirname, 'dockIcon.png');
+
+function playbackUrlFor(file) {
+  return /^https:\/\//i.test(file || '') ? file : `local-media://${file}`;
+}
+
+async function fetchApi(endpoint, options = {}) {
+  try {
+    return await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      signal: options.signal || AbortSignal.timeout(API_TIMEOUT_MS)
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Voxa API unavailable at ${API_URL}: ${reason}`);
+  }
+}
+
+function safePathSegment(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128) || 'local-user';
+}
 
 const showDockIcon = () => {
   if (process.platform !== 'darwin') return;
@@ -113,12 +146,14 @@ const createWidgetWindow = () => {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1024,
-    height: 720,
+    width: MAIN_WINDOW_WIDTH,
+    height: MAIN_WINDOW_HEIGHT,
     minWidth: 800,
     minHeight: 600,
+    show: false,
+    backgroundColor: '#FFFFFF',
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 20, y: 20 },
+    trafficLightPosition: { x: 12, y: 20 },
     icon: dockIconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -133,6 +168,10 @@ function createWindow() {
       mainWindow.hide();
     }
     return false;
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    if (mainWindow) mainWindow.show();
   });
 
   if (process.env.NODE_ENV === 'development') {
@@ -155,45 +194,74 @@ ipcMain.handle('recordings:root', async () => {
 });
 
 ipcMain.handle('recordings:list', async (_event, input = {}) => {
-  const response = await fetch(`${API_URL}/api/recordings`, {
-    headers: { 'x-user-id': input.userId || 'local-user' }
-  });
-  if (!response.ok) return [];
-  const recordings = await response.json();
-  return recordings.map((recording) => ({
-    ...recording,
-    playbackUrl: `local-media://${recording.file}`
-  }));
+  try {
+    const response = await fetchApi('/api/recordings', {
+      headers: { 'x-user-id': input.userId || 'local-user' }
+    });
+    if (!response.ok) return [];
+    const recordings = await response.json();
+    return recordings.map((recording) => ({
+      ...recording,
+      playbackUrl: playbackUrlFor(recording.file)
+    }));
+  } catch (error) {
+    console.error('Could not list recordings:', error);
+    return [];
+  }
 });
 
 ipcMain.handle('recordings:save', async (_event, input) => {
-  const formData = new FormData();
-  formData.append('audio', new Blob([Buffer.from(input.bytes)], { type: input.mimeType || 'audio/webm' }), 'recording.webm');
-  if (input.name) formData.append('name', input.name);
-  if (input.durationMs) formData.append('durationMs', String(input.durationMs));
-  if (input.mode) formData.append('mode', input.mode);
-  if (input.mimeType) formData.append('mimeType', input.mimeType);
+  const userId = input.userId || 'local-user';
+  const sessionId = input.id || `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+  const extension = input.extension || (String(input.mimeType).includes('webm') ? 'webm' : 'audio');
 
-  const response = await fetch(`${API_URL}/api/recordings`, {
-    method: 'POST',
-    headers: { 'x-user-id': input.userId || 'local-user' },
-    body: formData
-  });
+  try {
+    const blob = await upload(
+      `recordings/${safePathSegment(userId)}/${safePathSegment(sessionId)}.${extension}`,
+      Buffer.from(input.bytes),
+      {
+        access: 'public',
+        contentType: input.mimeType || 'audio/webm',
+        handleUploadUrl: `${API_URL}/api/recordings/upload`,
+        headers: { 'x-user-id': userId },
+        multipart: true
+      }
+    );
 
-  if (!response.ok) {
-    throw new Error('Failed to save recording to backend');
+    const response = await fetchApi('/api/recordings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': userId
+      },
+      body: JSON.stringify({
+        ...input,
+        bytes: undefined,
+        id: sessionId,
+        blobUrl: blob.url,
+        sizeBytes: input.bytes?.byteLength || input.bytes?.length || 0
+      })
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(body || `Backend returned ${response.status}`);
+    }
+
+    const metadata = await response.json();
+    const savedRecording = {
+      ...metadata,
+      playbackUrl: playbackUrlFor(metadata.file)
+    };
+
+    if (mainWindow) mainWindow.webContents.send('recordings:changed', savedRecording);
+    if (widgetWindow) widgetWindow.webContents.send('recordings:changed', savedRecording);
+
+    return savedRecording;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not save recording to Vercel Blob: ${reason}`);
   }
-
-  const metadata = await response.json();
-  const savedRecording = {
-    ...metadata,
-    playbackUrl: `local-media://${metadata.file}`
-  };
-
-  if (mainWindow) mainWindow.webContents.send('recordings:changed', savedRecording);
-  if (widgetWindow) widgetWindow.webContents.send('recordings:changed', savedRecording);
-
-  return savedRecording;
 });
 
 ipcMain.handle('recordings:open-folder', async () => {
@@ -242,11 +310,16 @@ ipcMain.handle('microphone:open-settings', async () => {
     return true;
   }
 
+  if (process.platform === 'win32') {
+    await shell.openExternal('ms-settings:privacy-microphone');
+    return true;
+  }
+
   return false;
 });
 
 ipcMain.handle('transcriptions:deepgram', async (_event, input) => {
-  const response = await fetch(`${API_URL}/api/recordings/${input.recordingId}/transcribe`, {
+  const response = await fetchApi(`/api/recordings/${input.recordingId}/transcribe`, {
     method: 'POST',
     headers: { 
       'Content-Type': 'application/json',
@@ -270,7 +343,7 @@ ipcMain.handle('transcriptions:get', async (_event, input) => {
 });
 
 ipcMain.handle('llm:analyze', async (_event, input) => {
-  const response = await fetch(`${API_URL}/api/recordings/${input.recordingId}/analyze`, {
+  const response = await fetchApi(`/api/recordings/${input.recordingId}/analyze`, {
     method: 'POST',
     headers: { 'x-user-id': input.userId || 'local-user' }
   });

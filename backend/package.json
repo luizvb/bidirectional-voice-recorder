@@ -2,7 +2,9 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
     "build": "tsc",
@@ -13,11 +15,13 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@vercel/blob": "^2.6.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "multer": "^2.2.0",
-    "pg": "^8.22.0"
+    "pg": "^8.22.0",
+    "stripe": "^22.3.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
@@ -27,6 +31,6 @@
     "@types/pg": "^8.20.0",
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
-    "typescript": "^7.0.2"
+    "typescript": "^5.4.5"
   }
 }

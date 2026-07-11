@@ -93,6 +93,22 @@ cp .env.example .env
 npm run dev
 ```
 
+### Web app
+
+The same React application also runs in Chrome and Edge. The browser build uses
+the microphone plus optional tab/screen audio, while global shortcuts, the mini
+widget, and silent system-wide audio capture remain desktop-only.
+
+```bash
+npm run dev:vite
+npm run build:web
+```
+
+Deploy the repository root to Vercel so the SPA and `/api` share one origin.
+Configure `VITE_NEON_AUTH_URL`, `NEON_AUTH_URL`, `DATABASE_URL`, Blob, Deepgram,
+OpenRouter, and Stripe environment variables. API requests require a Neon Auth
+JWT; the server never accepts a client-provided user id.
+
 ## Desktop release (macOS + Windows)
 
 The packaged desktop app defaults to the stable production API at

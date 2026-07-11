@@ -31,6 +31,13 @@ const authLocalization = {
 
 function LocalizedAuthProvider({ children }: { children: ReactNode }) {
   const { language } = useLanguage()
+  const isExtensionAuth = window.location.pathname === '/extension-auth'
+  const isHostedApp = window.location.pathname === '/app' || window.location.pathname.startsWith('/app/')
+  const redirectTo = isExtensionAuth
+    ? `${window.location.pathname}${window.location.search}`
+    : isHostedApp
+      ? `${window.location.pathname}${window.location.search}`
+      : '/'
 
   return (
     <NeonAuthUIProvider
@@ -38,6 +45,7 @@ function LocalizedAuthProvider({ children }: { children: ReactNode }) {
       social={{ providers: ['google'] }}
       localization={authLocalization[language]}
       defaultTheme="light"
+      redirectTo={redirectTo}
     >
       {children}
     </NeonAuthUIProvider>

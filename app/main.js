@@ -201,7 +201,7 @@ ipcMain.handle('recordings:root', async () => {
 ipcMain.handle('recordings:list', async (_event, input = {}) => {
   try {
     const response = await fetchApi('/api/recordings', {
-      headers: { 'x-user-id': input.userId || 'local-user' }
+      headers: { Authorization: `Bearer ${input.authToken || ''}` }
     });
     if (!response.ok) return [];
     const recordings = await response.json();
@@ -216,7 +216,9 @@ ipcMain.handle('recordings:list', async (_event, input = {}) => {
 });
 
 ipcMain.handle('recordings:save', async (_event, input) => {
-  const userId = input.userId || 'local-user';
+  const authToken = input.authToken || '';
+  const userId = input.userId;
+  const { authToken: _authToken, userId: _userId, ...recordingInput } = input;
   const sessionId = input.id || `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
   const extension = input.extension || (String(input.mimeType).includes('webm') ? 'webm' : 'audio');
 
@@ -228,7 +230,7 @@ ipcMain.handle('recordings:save', async (_event, input) => {
         access: 'public',
         contentType: input.mimeType || 'audio/webm',
         handleUploadUrl: `${API_URL}/api/recordings/upload`,
-        headers: { 'x-user-id': userId },
+        headers: { Authorization: `Bearer ${authToken}` },
         multipart: true
       }
     );
@@ -237,10 +239,10 @@ ipcMain.handle('recordings:save', async (_event, input) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-id': userId
+        Authorization: `Bearer ${authToken}`
       },
       body: JSON.stringify({
-        ...input,
+        ...recordingInput,
         bytes: undefined,
         id: sessionId,
         blobUrl: blob.url,
@@ -277,10 +279,10 @@ ipcMain.handle('recordings:open-folder', async () => {
   return root;
 });
 
-ipcMain.handle('recordings:delete', async (_event, id) => {
-  const response = await fetchApi(`/api/recordings/${id}`, {
+ipcMain.handle('recordings:delete', async (_event, input) => {
+  const response = await fetchApi(`/api/recordings/${input.id}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': 'local-user' }
+    headers: { Authorization: `Bearer ${input.authToken || ''}` }
   });
   if (!response.ok && response.status !== 404) throw new Error('Could not delete recording');
   return true;
@@ -332,7 +334,7 @@ ipcMain.handle('transcriptions:deepgram', async (_event, input) => {
     method: 'POST',
     headers: { 
       'Content-Type': 'application/json',
-      'x-user-id': input.userId || 'local-user' 
+      Authorization: `Bearer ${input.authToken || ''}`
     },
     body: JSON.stringify({ maxQuality: Boolean(input.maxQuality) })
   });
@@ -347,7 +349,7 @@ ipcMain.handle('transcriptions:deepgram', async (_event, input) => {
 
 ipcMain.handle('transcriptions:get', async (_event, input) => {
   const response = await fetchApi(`/api/recordings/${input.recordingId}/transcript`, {
-    headers: { 'x-user-id': input.userId || 'local-user' }
+    headers: { Authorization: `Bearer ${input.authToken || ''}` }
   });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error('Could not load transcript');
@@ -360,7 +362,7 @@ ipcMain.handle('llm:analyze', async (_event, input) => {
     signal: AbortSignal.timeout(120_000),
     headers: {
       'Content-Type': 'application/json',
-      'x-user-id': input.userId || 'local-user'
+      Authorization: `Bearer ${input.authToken || ''}`
     },
     body: JSON.stringify({
       modes: input.modes,
@@ -379,10 +381,22 @@ ipcMain.handle('llm:analyze', async (_event, input) => {
 
 ipcMain.handle('llm:get-analysis', async (_event, input) => {
   const response = await fetchApi(`/api/recordings/${input.recordingId}/analysis`, {
-    headers: { 'x-user-id': input.userId || 'local-user' }
+    headers: { Authorization: `Bearer ${input.authToken || ''}` }
   });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error('Could not load analysis');
+  return response.json();
+});
+
+ipcMain.handle('stripe:create-checkout-session', async (_event, input) => {
+  const response = await fetchApi('/api/stripe/create-checkout-session', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${input.authToken || ''}`
+    }
+  });
+  if (!response.ok) throw new Error((await response.text()) || 'Could not start checkout');
   return response.json();
 });
 

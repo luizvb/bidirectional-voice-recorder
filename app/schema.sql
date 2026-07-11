@@ -16,8 +16,16 @@ CREATE TABLE IF NOT EXISTS recordings (
   size_bytes INT,
   mode VARCHAR(50),
   local_file_path TEXT,
+  mime_type VARCHAR(100) DEFAULT 'audio/webm',
+  state VARCHAR(50) DEFAULT 'uploaded',
+  processing_error TEXT,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+ALTER TABLE recordings ADD COLUMN IF NOT EXISTS mime_type VARCHAR(100) DEFAULT 'audio/webm';
+ALTER TABLE recordings ADD COLUMN IF NOT EXISTS state VARCHAR(50) DEFAULT 'uploaded';
+ALTER TABLE recordings ADD COLUMN IF NOT EXISTS processing_error TEXT;
+CREATE INDEX IF NOT EXISTS recordings_user_created_idx ON recordings(user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS transcripts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -26,6 +34,13 @@ CREATE TABLE IF NOT EXISTS transcripts (
   markdown TEXT,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+DELETE FROM transcripts older
+USING transcripts newer
+WHERE older.recording_id = newer.recording_id
+  AND older.provider = newer.provider
+  AND (older.created_at, older.id) < (newer.created_at, newer.id);
+CREATE UNIQUE INDEX IF NOT EXISTS transcripts_recording_provider_idx ON transcripts(recording_id, provider);
 
 CREATE TABLE IF NOT EXISTS analyses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

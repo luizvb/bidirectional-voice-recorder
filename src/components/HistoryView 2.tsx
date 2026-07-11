@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, FileText, Loader2, HardDrive, Clock, Trash2, BrainCircuit } from 'lucide-react';
+import { Play, Pause, Loader2, HardDrive, Clock, Trash2 } from 'lucide-react';
 import AIAnalysis from './AIAnalysis';
 import clsx from 'clsx';
 import { useLanguage } from '../contexts/LanguageContext';

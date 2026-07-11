@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { platform } from '../platform';
 
-// Using window.recorder from preload
 declare global {
   interface Window {
     recorder: any;
@@ -76,14 +76,21 @@ export function useRecorder() {
     }
 
     try {
-      system = await navigator.mediaDevices.getDisplayMedia({
+      if (!platform.capabilities.systemAudio) {
+        warnings.push('Shared tab audio is not supported in this browser. Recording microphone only.');
+      } else system = await navigator.mediaDevices.getDisplayMedia({
         audio: true,
         video: true // Video track is required by spec, we will drop it
       });
-      system.getVideoTracks().forEach(track => track.stop());
-      streamsRef.current.push(system);
+      if (system) {
+        system.getVideoTracks().forEach(track => track.stop());
+        streamsRef.current.push(system);
+        if (system.getAudioTracks().length === 0) warnings.push('The shared source did not provide audio. Recording microphone only.');
+      }
     } catch (e: any) {
-      warnings.push("System audio capture was skipped or denied.");
+      warnings.push(e?.name === 'NotAllowedError'
+        ? 'Tab or screen sharing was canceled. Recording microphone only.'
+        : 'Shared audio could not be captured. Recording microphone only.');
     }
 
     // Merge into stereo channels (Mic = Left, System = Right)
@@ -175,7 +182,7 @@ export function useRecorder() {
 
   const stopRecording = useCallback(async (options: { discard?: boolean, review?: boolean } = {}) => {
     return new Promise<any>((resolve, reject) => {
-      if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') return resolve();
+      if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') return resolve(undefined);
       
       stopTimer();
       
@@ -189,7 +196,7 @@ export function useRecorder() {
 
         if (options.discard) {
            setStatus('Discarded');
-           return resolve();
+           return resolve(undefined);
         }
 
         if (options.review) {
@@ -197,14 +204,14 @@ export function useRecorder() {
            setReviewBlob({ blob, durationMs, url });
            setIsReviewing(true);
            setStatus('Reviewing');
-           return resolve();
+           return resolve(undefined);
         }
         
         // Default: save immediately
         setStatus('Saving...');
         try {
           const bytes = await blob.arrayBuffer();
-          const saved = await window.recorder.saveRecording({
+          const saved = await platform.saveRecording({
             name: sessionName || 'Untitled recording',
             durationMs,
             mode: 'mic',
@@ -229,7 +236,7 @@ export function useRecorder() {
     setStatus('Saving...');
     try {
       const bytes = await reviewBlob.blob.arrayBuffer();
-      await window.recorder.saveRecording({
+      await platform.saveRecording({
         name: sessionName || 'Untitled recording',
         durationMs: reviewBlob.durationMs,
         mode: 'mic',

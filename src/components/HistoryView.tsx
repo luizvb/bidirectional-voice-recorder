@@ -19,7 +19,8 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import type { LibraryStatus, Recording } from '../App';
+import type { LibraryStatus } from '../App';
+import { platform, type Recording } from '../platform';
 import { useLanguage } from '../contexts/LanguageContext';
 import AIAnalysis from './AIAnalysis';
 
@@ -166,14 +167,14 @@ export default function HistoryView({
       }
 
       try {
-        const result = await window.recorder.getTranscript(selected.id);
+        const result = await platform.getTranscript(selected.id);
         setTranscriptData({
           markdown: result?.markdown || '',
           isTranscribing: false,
           status: t('history', 'transcriptSaved'),
         });
 
-        const analysis = await window.recorder.getAnalysis(selected.id);
+        const analysis = await platform.getAnalysis(selected.id);
         setAiData(analysis
           ? { analysis, isAnalyzing: false }
           : { isAnalyzing: false, status: t('history', 'noAnalysis') });
@@ -193,12 +194,12 @@ export default function HistoryView({
       setAutoProcessStep(t('history', 'transcribingStep'));
 
       try {
-        const result = await window.recorder.transcribeWithDeepgram({ recordingId: selected.id, maxQuality: false });
+        const result = await platform.transcribe({ recordingId: selected.id, maxQuality: false });
         setTranscriptData({ markdown: result.markdown, isTranscribing: false, status: t('history', 'transcriptSaved') });
         await loadRecordings();
 
         setAutoProcessStep(t('history', 'analyzingStep'));
-        const analysis = await window.recorder.analyzeWithLLM({
+        const analysis = await platform.analyze({
           recordingId: selected.id,
           modes: analysisModes,
           outputLanguage: locale,
@@ -226,7 +227,7 @@ export default function HistoryView({
     if (!selected) return;
     setTranscriptData({ isTranscribing: true, status: t('history', 'transcribingStep') });
     try {
-      const result = await window.recorder.transcribeWithDeepgram({ recordingId: selected.id, maxQuality: false });
+      const result = await platform.transcribe({ recordingId: selected.id, maxQuality: false });
       setTranscriptData({ markdown: result.markdown, isTranscribing: false, status: t('history', 'transcriptSaved') });
       await loadRecordings();
     } catch (error: any) {
@@ -239,7 +240,7 @@ export default function HistoryView({
     setAiData({ isAnalyzing: true, status: t('history', 'analyzingStep') });
     setActiveTab('analysis');
     try {
-      setAiData({ analysis: await window.recorder.analyzeWithLLM({
+      setAiData({ analysis: await platform.analyze({
         recordingId: selected.id,
         modes: analysisModes,
         outputLanguage: locale,
@@ -264,7 +265,7 @@ export default function HistoryView({
     setIsExportingPdf(true);
     setPdfStatus('');
     try {
-      const result = await window.recorder.exportAnalysisPdf({
+      const result = await platform.exportAnalysisPdf({
         analysis: aiData.analysis,
         recording: selected,
         locale,
@@ -281,7 +282,7 @@ export default function HistoryView({
     if (!selected) return;
     setIsDeleting(true);
     try {
-      await window.recorder.deleteRecording(selected.id);
+      await platform.deleteRecording(selected.id);
       setShowDeleteDialog(false);
       onSelect(null);
       await loadRecordings();

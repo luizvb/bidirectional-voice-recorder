@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { query } from '../config/db';
+import { requireAuth } from '../middleware/auth';
 
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_fallback', {
@@ -8,9 +9,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_fallback', {
 });
 
 // Create Checkout Session
-router.post('/create-checkout-session', express.json(), async (req: Request, res: Response): Promise<void> => {
+router.post('/create-checkout-session', express.json(), requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id || req.body.userId;
+    const userId = req.user?.id;
 
     if (!userId) {
        res.status(401).json({ error: 'Unauthorized' });
@@ -26,8 +27,8 @@ router.post('/create-checkout-session', express.json(), async (req: Request, res
         },
       ],
       mode: 'subscription',
-      success_url: 'http://localhost:5173/?checkout=success',
-      cancel_url: 'http://localhost:5173/?checkout=cancel',
+      success_url: `${process.env.APP_URL || 'http://localhost:5173'}/?checkout=success`,
+      cancel_url: `${process.env.APP_URL || 'http://localhost:5173'}/?checkout=cancel`,
       client_reference_id: userId,
     });
 

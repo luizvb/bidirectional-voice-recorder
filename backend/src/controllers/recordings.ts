@@ -1,16 +1,18 @@
 import { Request, Response } from 'express';
-import { del, put } from '@vercel/blob';
+import { del, get, put } from '@vercel/blob';
 import { handleUpload, HandleUploadBody } from '@vercel/blob/client';
+import { waitUntil } from '@vercel/functions';
+import { Readable } from 'node:stream';
 import db from '../config/db';
 import { transcribeWithDeepgram } from '../services/transcription';
 import { analyzeTranscriptWithOpenRouter, normalizeAnalysisModes } from '../services/llm';
 
-async function ensureUser(userId: string): Promise<void> {
+async function ensureUser(userId: string, email = 'unknown@voxa'): Promise<void> {
   await db.query(`
     INSERT INTO users (id, email) 
     VALUES ($1, $2) 
     ON CONFLICT (id) DO NOTHING
-  `, [userId, 'unknown@auth0']);
+  `, [userId, email]);
 }
 
 function safePathSegment(value: string): string {
@@ -31,12 +33,12 @@ function isRecordingBlobUrl(value: unknown): value is string {
 
 export const createRecordingUploadToken = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = safePathSegment(req.user?.id || 'local-user');
+    const userId = safePathSegment(req.user!.id);
     const result = await handleUpload({
       request: req,
       body: req.body as HandleUploadBody,
       onBeforeGenerateToken: async (pathname) => {
-        if (!pathname.startsWith(`recordings/${userId}/`)) {
+        if (!/^recordings\/[0-9a-f-]{36}\.(webm|audio)$/i.test(pathname)) {
           throw new Error('Invalid recording upload path.');
         }
 
@@ -44,12 +46,9 @@ export const createRecordingUploadToken = async (req: Request, res: Response): P
           allowedContentTypes: ['audio/*', 'video/webm'],
           maximumSizeInBytes: 1024 * 1024 * 1024,
           addRandomSuffix: false,
-          allowOverwrite: true,
+          allowOverwrite: false,
           cacheControlMaxAge: 60
         };
-      },
-      onUploadCompleted: async () => {
-        // Metadata is registered by POST /api/recordings after the direct upload resolves.
       }
     });
 
@@ -63,8 +62,8 @@ export const createRecordingUploadToken = async (req: Request, res: Response): P
 export const uploadRecording = async (req: Request, res: Response): Promise<void> => {
   let uploadedBlobUrl: string | null = null;
   try {
-    const userId = req.user?.id || 'local-user';
-    await ensureUser(userId);
+    const userId = req.user!.id;
+    await ensureUser(userId, req.user?.email);
 
     const { id, name, durationMs, mode, mimeType, createdAt, blobUrl } = req.body;
     const sessionId = id || Date.now().toString();
@@ -79,16 +78,24 @@ export const uploadRecording = async (req: Request, res: Response): Promise<void
       return;
     }
 
+    if (blobUrl) {
+      const pathname = new URL(blobUrl).pathname;
+      if (!pathname.startsWith(`/recordings/${safePathSegment(sessionId)}.`)) {
+        res.status(400).json({ error: 'Blob path does not match the recording ID.' });
+        return;
+      }
+    }
+
     if (req.file) {
       const extension = req.file.mimetype.includes('webm') ? 'webm' : 'audio';
       const blob = await put(
         `recordings/${safePathSegment(userId)}/${safePathSegment(sessionId)}.${extension}`,
         req.file.buffer,
         {
-          access: 'public',
+          access: 'private',
           contentType: req.file.mimetype || 'audio/webm',
           addRandomSuffix: false,
-          allowOverwrite: true
+          allowOverwrite: false
         }
       );
       uploadedBlobUrl = blob.url;
@@ -100,25 +107,32 @@ export const uploadRecording = async (req: Request, res: Response): Promise<void
     const effectiveMimeType = mimeType || req.file?.mimetype || 'audio/webm';
 
     await db.query(`
-      INSERT INTO recordings (id, user_id, name, duration_ms, size_bytes, mode, local_file_path, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO recordings (id, user_id, name, duration_ms, size_bytes, mode, local_file_path, mime_type, state, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'uploaded', $9)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         duration_ms = EXCLUDED.duration_ms,
         size_bytes = EXCLUDED.size_bytes,
         mode = EXCLUDED.mode,
-        local_file_path = EXCLUDED.local_file_path
-    `, [sessionId, userId, name, durationMs, sizeBytes, mode, uploadedBlobUrl, createdAt || new Date().toISOString()]);
+        local_file_path = EXCLUDED.local_file_path,
+        mime_type = EXCLUDED.mime_type,
+        state = CASE WHEN recordings.state = 'ready' THEN recordings.state ELSE 'uploaded' END,
+        processing_error = NULL
+      WHERE recordings.user_id = EXCLUDED.user_id
+    `, [sessionId, userId, name, durationMs, sizeBytes, mode, uploadedBlobUrl, effectiveMimeType, createdAt || new Date().toISOString()]);
 
     res.status(201).json({
       id: sessionId,
+      recordingId: sessionId,
+      state: 'uploaded',
+      resultUrl: `${process.env.APP_URL || 'http://localhost:5173'}/recordings/${sessionId}`,
       name,
       durationMs,
       mode,
       mimeType: effectiveMimeType,
       sizeBytes,
-      file: uploadedBlobUrl,
-      playbackUrl: uploadedBlobUrl
+      file: undefined,
+      playbackUrl: `/api/recordings/${sessionId}/media`
     });
   } catch (error: any) {
     console.error('Error saving recording:', error);
@@ -133,7 +147,7 @@ export const uploadRecording = async (req: Request, res: Response): Promise<void
 
 export const listRecordings = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.id || 'local-user';
+    const userId = req.user!.id;
     const { rows } = await db.query(`
       SELECT r.*,
         EXISTS (SELECT 1 FROM transcripts t WHERE t.recording_id = r.id) AS has_transcript,
@@ -149,8 +163,8 @@ export const listRecordings = async (req: Request, res: Response): Promise<void>
       createdAt: r.created_at,
       durationMs: r.duration_ms,
       mode: r.mode,
-      file: r.local_file_path,
-      playbackUrl: r.local_file_path,
+      file: undefined,
+      playbackUrl: `/api/recordings/${r.id}/media`,
       sizeBytes: r.size_bytes,
       transcript: r.has_transcript ? { ready: true } : null,
       hasAnalysis: r.has_analysis
@@ -165,7 +179,7 @@ export const listRecordings = async (req: Request, res: Response): Promise<void>
 
 export const getTranscript = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.id || 'local-user';
+    const userId = req.user!.id;
     const { rows } = await db.query(`
       SELECT t.provider, t.markdown, t.created_at
       FROM transcripts t
@@ -185,9 +199,34 @@ export const getTranscript = async (req: Request, res: Response): Promise<void> 
   }
 };
 
+export const streamRecording = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { rows } = await db.query('SELECT local_file_path, mime_type FROM recordings WHERE id = $1 AND user_id = $2', [req.params.id, req.user!.id]);
+    if (!rows.length) {
+      res.status(404).json({ error: 'Recording not found' });
+      return;
+    }
+    const source = rows[0];
+    if (!isRecordingBlobUrl(source.local_file_path)) {
+      res.status(409).json({ error: 'Recording is not available from cloud storage.' });
+      return;
+    }
+    const blob = await get(source.local_file_path, { access: 'private' });
+    if (!blob) {
+      res.status(404).json({ error: 'Recording blob not found' });
+      return;
+    }
+    res.setHeader('Content-Type', source.mime_type || blob.blob.contentType || 'audio/webm');
+    res.setHeader('Cache-Control', 'private, no-store');
+    Readable.fromWeb(blob.stream as any).pipe(res);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Could not stream recording.' });
+  }
+};
+
 export const getAnalysis = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.id || 'local-user';
+    const userId = req.user!.id;
     const { rows } = await db.query(`
       SELECT a.json_data, a.created_at
       FROM analyses a
@@ -209,7 +248,7 @@ export const getAnalysis = async (req: Request, res: Response): Promise<void> =>
 
 export const deleteRecording = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.id || 'local-user';
+    const userId = req.user!.id;
     const { rows } = await db.query(
       'DELETE FROM recordings WHERE id = $1 AND user_id = $2 RETURNING local_file_path',
       [req.params.id, userId]
@@ -229,47 +268,86 @@ export const deleteRecording = async (req: Request, res: Response): Promise<void
 
 export const transcribeRecording = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.id || 'local-user';
+    const userId = req.user!.id;
     const { id } = req.params;
     
-    const { rows } = await db.query('SELECT * FROM recordings WHERE id = $1 AND user_id = $2', [id, userId]);
+    const { rows } = await db.query(`
+      UPDATE recordings
+      SET state = 'transcribing', processing_error = NULL
+      WHERE id = $1 AND user_id = $2 AND state IN ('uploaded', 'failed')
+      RETURNING *
+    `, [id, userId]);
     if (rows.length === 0) {
-      res.status(404).json({ error: 'Recording not found' });
+      const existing = await db.query('SELECT state FROM recordings WHERE id = $1 AND user_id = $2', [id, userId]);
+      if (existing.rows.length === 0) res.status(404).json({ error: 'Recording not found' });
+      else res.status(202).json({ recordingId: id, state: existing.rows[0].state });
       return;
     }
-    
-    const recording = rows[0];
-    const apiKey = process.env.DEEPGRAM_API_KEY || '';
-    
-    const result = await transcribeWithDeepgram({
-      apiKey,
-      filePath: recording.local_file_path,
-      mimeType: 'audio/webm',
-      maxQuality: req.body.maxQuality
-    });
 
-    await db.query(`
-      INSERT INTO transcripts (recording_id, provider, markdown)
-      VALUES ($1, $2, $3)
-    `, [id, result.provider, result.markdown]);
-
-    if (result.usage) {
-      await db.query(`
-        INSERT INTO usage_logs (user_id, resource_type, provider, quantity, estimated_cost_usd)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [userId, 'transcription', result.provider, result.usage.durationSeconds, result.usage.costUsd]);
-    }
-    
-    res.json({ markdown: result.markdown });
+    const job = runTranscription(rows[0], userId, Boolean(req.body?.maxQuality));
+    if (process.env.VERCEL) waitUntil(job);
+    else void job;
+    res.status(202).json({ recordingId: id, state: 'transcribing' });
   } catch (error: any) {
     console.error('Error transcribing:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
+async function runTranscription(recording: any, userId: string, maxQuality: boolean): Promise<void> {
+  try {
+    let audio: Buffer | undefined;
+    if (/^https:\/\//i.test(recording.local_file_path)) {
+      const blob = await get(recording.local_file_path, { access: 'private' });
+      if (!blob) throw new Error('Recording blob was not found.');
+      audio = Buffer.from(await new Response(blob.stream).arrayBuffer());
+    }
+    const result = await transcribeWithDeepgram({
+      apiKey: process.env.DEEPGRAM_API_KEY || '',
+      filePath: audio ? undefined : recording.local_file_path,
+      audio,
+      mimeType: recording.mime_type || 'audio/webm',
+      maxQuality
+    });
+    await db.query('BEGIN');
+    try {
+      await db.query(`
+        INSERT INTO transcripts (recording_id, provider, markdown)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (recording_id, provider) DO UPDATE SET markdown = EXCLUDED.markdown, created_at = NOW()
+      `, [recording.id, result.provider, result.markdown]);
+      await db.query(`
+        INSERT INTO usage_logs (user_id, resource_type, provider, quantity, estimated_cost_usd)
+        VALUES ($1, 'transcription', $2, $3, $4)
+      `, [userId, result.provider, result.usage.durationSeconds, result.usage.costUsd]);
+      await db.query("UPDATE recordings SET state = 'ready', processing_error = NULL WHERE id = $1 AND user_id = $2", [recording.id, userId]);
+      await db.query('COMMIT');
+    } catch (error) {
+      await db.query('ROLLBACK');
+      throw error;
+    }
+  } catch (error) {
+    await db.query("UPDATE recordings SET state = 'failed', processing_error = $3 WHERE id = $1 AND user_id = $2", [recording.id, userId, error instanceof Error ? error.message.slice(0, 500) : 'Transcription failed.']);
+  }
+}
+
+export const getRecordingStatus = async (req: Request, res: Response): Promise<void> => {
+  const { rows } = await db.query('SELECT state, processing_error FROM recordings WHERE id = $1 AND user_id = $2', [req.params.id, req.user!.id]);
+  if (!rows.length) {
+    res.status(404).json({ error: 'Recording not found' });
+    return;
+  }
+  res.json({
+    recordingId: req.params.id,
+    state: rows[0].state,
+    error: rows[0].processing_error || undefined,
+    resultUrl: `${process.env.APP_URL || 'http://localhost:5173'}/recordings/${req.params.id}`
+  });
+};
+
 export const analyzeRecording = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.id || 'local-user';
+    const userId = req.user!.id;
     const { id } = req.params;
 
     const { rows: tRows } = await db.query(`

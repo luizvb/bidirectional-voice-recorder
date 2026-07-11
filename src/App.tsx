@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Plus, X } from 'lucide-react';
 import ComponentsShowcase from './components/ComponentsShowcase';
 import Dashboard from './components/Dashboard';
+import ExtensionAuth from './components/ExtensionAuth';
 import HistoryView from './components/HistoryView';
 import Login from './components/Login';
 import MiniWidget from './components/MiniWidget';
@@ -11,20 +12,13 @@ import Sidebar from './components/Sidebar';
 import { useAuth } from './hooks/useAuth';
 import { useKeyboardActions } from './hooks/useKeyboardActions';
 import { useLanguage } from './contexts/LanguageContext';
+import { platform, type Recording } from './platform';
 
 export type AppView = 'workspace' | 'library';
 export type LibraryStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-export interface Recording {
-  id: string;
-  name: string;
-  durationMs: number;
-  createdAt?: string;
-  transcript?: any;
-  playbackUrl?: string;
-}
-
 export default function App() {
+  const isExtensionAuth = window.location.pathname === '/extension-auth';
   const { isAuthenticated, isLoading } = useAuth();
   const { t } = useLanguage();
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -39,19 +33,17 @@ export default function App() {
   const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(null);
   const [autoProcessRecordingId, setAutoProcessRecordingId] = useState<string | null>(null);
 
-  const isElectronApp = typeof window !== 'undefined' && Boolean(window.recorder);
+  const isElectronApp = platform.capabilities.kind === 'electron';
   const isUiPreview = import.meta.env.DEV && window.location.hash === '#/ui';
   const sidebarCollapsed = isCompact || !isSidebarOpen;
 
   const loadRecordings = useCallback(async () => {
-    if (!window.recorder) return;
-
     setLibraryStatus('loading');
     setLibraryError('');
     let timeoutId: number | undefined;
     try {
       const data = await Promise.race([
-        window.recorder.listRecordings(),
+        platform.listRecordings(),
         new Promise<never>((_, reject) => {
           timeoutId = window.setTimeout(() => reject(new Error(t('common', 'serviceUnavailable'))), 6000);
         }),
@@ -84,9 +76,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isElectronApp || isLoading) return;
+    if (isLoading || !isAuthenticated) return;
     loadRecordings();
-  }, [isElectronApp, isLoading, loadRecordings]);
+  }, [isAuthenticated, isLoading, loadRecordings]);
 
   useEffect(() => {
     const handleShowLogin = () => setShowLoginModal(true);
@@ -106,10 +98,8 @@ export default function App() {
   }, [handleSelectRecording, isAuthenticated, loadRecordings]);
 
   useEffect(() => {
-    if (!isElectronApp) return;
-    window.addEventListener('recordings:changed', loadRecordings);
-    return () => window.removeEventListener('recordings:changed', loadRecordings);
-  }, [isElectronApp, loadRecordings]);
+    return platform.subscribeToRecordingsChanged(loadRecordings);
+  }, [loadRecordings]);
 
   const handleRecordingComplete = useCallback((id: string) => {
     setSelectedRecordingId(id);
@@ -142,10 +132,9 @@ export default function App() {
 
   useKeyboardActions({ enabled: isElectronApp && !isWidget, onEscape: handleEscape });
 
+  if (isExtensionAuth) return <ExtensionAuth />;
   if (isUiPreview) return <ComponentsShowcase />;
   if (isWidget) return <MiniWidget />;
-  if (!isElectronApp) return null;
-
   if (isLoading) {
     return (
       <div className="app-loading drag-region">

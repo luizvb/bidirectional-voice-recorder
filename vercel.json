@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "VOXA_WEB_BASE=/app/ npm run build:react",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/app/assets/(.*)", "destination": "/assets/$1" },
+    { "source": "/app/favicon.png", "destination": "/favicon.png" },
+    { "source": "/app/voxalogo.png", "destination": "/voxalogo.png" },
+    { "source": "/app", "destination": "/index.html" },
+    { "source": "/app/(.*)", "destination": "/index.html" }
+  ],
+  "build": {
+    "env": {
+      "VITE_API_URL": "https://api-voxa.netolabs.dev",
+      "VITE_NEON_AUTH_URL": "https://ep-withered-river-at7wv9x1.neonauth.c-9.us-east-1.aws.neon.tech/neondb/auth"
+    }
+  }
+}

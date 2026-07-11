@@ -4,7 +4,8 @@ import path from 'node:path';
 
 export default defineConfig({
   plugins: [react()],
-  base: './', // important for electron
+  // Electron needs relative assets; the hosted SPA is mounted below /app.
+  base: process.env.VOXA_WEB_BASE || './',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

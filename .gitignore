@@ -10,3 +10,4 @@ release-assets/
 .env.*.local
 .vercel
 .agents
+.env*

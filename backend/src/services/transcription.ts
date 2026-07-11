@@ -4,7 +4,8 @@ const DEEPGRAM_ENDPOINT = "https://api.deepgram.com/v1/listen";
 
 export interface TranscriptionInput {
   apiKey: string;
-  filePath: string;
+  filePath?: string;
+  audio?: Buffer;
   mimeType: string;
   maxQuality?: boolean;
 }
@@ -111,7 +112,9 @@ export async function transcribeWithDeepgram(
   }
 
   let audio: Buffer;
-  if (/^https:\/\//i.test(filePath)) {
+  if (input.audio) {
+    audio = input.audio;
+  } else if (filePath && /^https:\/\//i.test(filePath)) {
     const audioResponse = await fetch(filePath);
     if (!audioResponse.ok) {
       throw new Error(
@@ -119,8 +122,10 @@ export async function transcribeWithDeepgram(
       );
     }
     audio = Buffer.from(await audioResponse.arrayBuffer());
-  } else {
+  } else if (filePath) {
     audio = await fs.readFile(filePath);
+  } else {
+    throw new Error('Transcription input has no audio source.');
   }
   const response = await fetch(createDeepgramUrl({ maxQuality }), {
     method: "POST",

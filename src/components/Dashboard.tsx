@@ -19,7 +19,8 @@ import {
   Square,
   Users,
 } from 'lucide-react';
-import type { LibraryStatus, Recording } from '../App';
+import type { LibraryStatus } from '../App';
+import { platform, type Recording } from '../platform';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useRecorder } from '../hooks/useRecorder';
 
@@ -114,8 +115,8 @@ export default function Dashboard({
   useEffect(() => {
     async function loadShortcutSettings() {
       try {
-        if (!window.recorder?.getShortcutSettings) return;
-        setShortcutSettings(await window.recorder.getShortcutSettings());
+        if (!platform.getShortcutSettings) return;
+        setShortcutSettings(await platform.getShortcutSettings());
       } catch (error) {
         console.error(error);
       }
@@ -133,15 +134,15 @@ export default function Dashboard({
       }
     };
 
-    if (!window.recorder) return;
-    window.recorder.onShortcutRecord(handleShortcut);
-    return () => window.recorder.removeShortcutRecord(handleShortcut);
+    if (!platform.subscribeToShortcutRecord) return;
+    return platform.subscribeToShortcutRecord(handleShortcut);
   }, [isRecording, onRecordingComplete, startRecording, stopRecording]);
 
   const handleShortcutChange = async (nextShortcut: string) => {
     try {
       setShortcutStatus(t('recorder', 'savingShortcut'));
-      setShortcutSettings(await window.recorder.setRecordShortcut(nextShortcut));
+      if (!platform.setRecordShortcut) return;
+      setShortcutSettings(await platform.setRecordShortcut(nextShortcut));
       setShortcutStatus(t('recorder', 'shortcutUpdated'));
     } catch (error: any) {
       setShortcutStatus(error?.message || t('recorder', 'shortcutFailed'));
@@ -151,7 +152,7 @@ export default function Dashboard({
   const handleMicrophoneSettings = async () => {
     try {
       setMicStatus(t('recorder', 'openingAudioSettings'));
-      if (window.recorder?.openMicrophoneSettings && await window.recorder.openMicrophoneSettings()) {
+      if (platform.openMicrophoneSettings && await platform.openMicrophoneSettings()) {
         setMicStatus(t('recorder', 'audioSettingsOpened'));
         return;
       }
@@ -193,7 +194,7 @@ export default function Dashboard({
           <p>{t('workspace', 'subtitle')}</p>
         </div>
         <div className="workspace-tools">
-          <div className="shortcut-control">
+          {platform.capabilities.globalShortcuts && <div className="shortcut-control">
             <button
               type="button"
               className="button button-secondary"
@@ -228,7 +229,7 @@ export default function Dashboard({
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
+          </div>}
           <button type="button" className="icon-button" onClick={handleMicrophoneSettings} aria-label={t('recorder', 'audioSettings')} title={t('recorder', 'audioSettings')}>
             <Settings2 />
           </button>
@@ -301,7 +302,7 @@ export default function Dashboard({
                 </button>
               </>
             )}
-            <span className="shortcut-hint">{t('recorder', 'shortcut')}: {currentShortcut}</span>
+            {platform.capabilities.globalShortcuts && <span className="shortcut-hint">{t('recorder', 'shortcut')}: {currentShortcut}</span>}
           </div>
         </div>
 

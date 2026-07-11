@@ -14,6 +14,7 @@ import {
 import type { AppView } from '../App';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../contexts/LanguageContext';
+import { platform } from '../platform';
 
 interface SidebarProps {
   activeView: AppView;
@@ -55,12 +56,7 @@ export default function Sidebar({ activeView, onViewChange, collapsed, showToggl
     }
 
     try {
-      const response = await fetch('http://localhost:3000/api/stripe/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user?.id || user?.email }),
-      });
-      const data = await response.json();
+      const data = await platform.createCheckoutSession();
       const electronWindow = window as unknown as Window & { electron?: { openExternal: (url: string) => void } };
       if (data.url) {
         if (electronWindow.electron) electronWindow.electron.openExternal(data.url);

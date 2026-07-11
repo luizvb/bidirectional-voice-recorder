@@ -15,6 +15,7 @@ import type { AppView } from '../App';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../contexts/LanguageContext';
 import { platform } from '../platform';
+import { Logo } from './Logo';
 
 interface SidebarProps {
   activeView: AppView;
@@ -76,7 +77,7 @@ export default function Sidebar({ activeView, onViewChange, collapsed, showToggl
           onClick={() => onViewChange('workspace')}
           aria-label={t('navigation', 'workspace')}
         >
-          <img src="/voxa-oficial-rounded.png" alt="" />
+          <span className="brand-mark"><Logo /></span>
           {!collapsed && (
             <span className="brand-copy">
               <strong>Voxa</strong>

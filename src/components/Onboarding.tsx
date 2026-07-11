@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { ArrowRight, BrainCircuit, FileText, Mic } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { Logo } from './Logo';
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -29,7 +30,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         transition={{ duration: 0.2 }}
       >
         <div className="onboarding-brand">
-          <img src="/voxa-oficial-rounded.png" alt="" />
+          <span className="onboarding-brand-mark"><Logo /></span>
           <span>Voxa</span>
         </div>
 

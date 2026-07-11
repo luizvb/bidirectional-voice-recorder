@@ -155,7 +155,8 @@ svg { width: 18px; height: 18px; stroke-width: 1.8; flex: 0 0 auto; }
 .sidebar-header { min-height: 112px; display: flex; align-items: flex-end; gap: 8px; padding: 52px 10px 12px; border-bottom: 1px solid var(--line); }
 .brand-button { display: flex; min-height: 44px; flex: 1; align-items: center; gap: 10px; border-radius: var(--radius); padding: 4px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
 .brand-button:hover { background: var(--surface); }
-.brand-button img { width: 36px; height: 36px; flex: 0 0 36px; border-radius: 9px; object-fit: cover; }
+.brand-mark { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border-radius: 9px; background: #10131b; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+.brand-mark svg { width: 28px; height: 28px; }
 .brand-copy { display: grid; gap: 2px; overflow: hidden; }
 .brand-copy strong { font-size: 15px; line-height: 1.1; }
 .brand-copy small { overflow: hidden; color: var(--text-tertiary); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
@@ -465,8 +466,9 @@ svg { width: 18px; height: 18px; stroke-width: 1.8; flex: 0 0 auto; }
 .onboarding-layer { background: #f2f2ef; }
 .onboarding-card { width: min(100%, 800px); border: 1px solid var(--line); border-radius: 16px; padding: 28px; background: #ffffff; box-shadow: var(--shadow-lg); }
 .onboarding-brand { display: flex; align-items: center; gap: 10px; }
-.onboarding-brand img { width: 38px; height: 38px; border-radius: 10px; }
-.onboarding-brand span { font-size: 16px; font-weight: 750; }
+.onboarding-brand-mark { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 10px; background: #10131b; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+.onboarding-brand-mark svg { width: 30px; height: 30px; }
+.onboarding-brand > span:last-child { font-size: 16px; font-weight: 750; }
 .onboarding-copy { max-width: 620px; margin-top: 32px; }
 .onboarding-copy h1 { max-width: 16ch; margin: 10px 0 0; font-size: clamp(34px, 5vw, 52px); line-height: 1.02; letter-spacing: -0.055em; }
 .onboarding-copy p { max-width: 58ch; margin: 14px 0 0; color: var(--text-secondary); font-size: 14px; line-height: 1.6; }

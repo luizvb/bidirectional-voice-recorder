@@ -73,7 +73,7 @@ function App() {
     <main className="shell">
       <header className="brand">
         <div className="brand-lockup">
-          <img src="/icon.png" alt="" aria-hidden="true" />
+          <img src="/icon-48.png" alt="" aria-hidden="true" />
           <div><span className="wordmark">Voxa</span><span className="context">Google Meet recorder</span></div>
         </div>
         <button className="account" onClick={() => chrome.tabs.create({ url: `${__VOXA_APP_URL__}/extension-auth?extensionId=${chrome.runtime.id}` })}>

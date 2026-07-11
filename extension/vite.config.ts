@@ -22,7 +22,9 @@ export default defineConfig(({ mode }) => {
         name: 'voxa-extension-manifest',
         closeBundle() {
           mkdirSync(outDir, { recursive: true });
-          copyFileSync(resolve(root, '..', 'public', 'voxa-oficial-rounded.png'), resolve(outDir, 'icon.png'));
+          for (const size of [16, 32, 48, 128]) {
+            copyFileSync(resolve(root, '..', 'public', `voxa-icon-${size}.png`), resolve(outDir, `icon-${size}.png`));
+          }
           writeFileSync(resolve(outDir, 'manifest.json'), JSON.stringify({
             manifest_version: 3,
             minimum_chrome_version: '116',
@@ -32,8 +34,8 @@ export default defineConfig(({ mode }) => {
             permissions: ['activeTab', 'offscreen', 'sidePanel', 'storage', 'tabCapture'],
             host_permissions: ['https://meet.google.com/*', ...allowedOrigins],
             background: { service_worker: 'service-worker.js', type: 'module' },
-            action: { default_title: 'Open Voxa' },
-            icons: { '16': 'icon.png', '48': 'icon.png', '128': 'icon.png' },
+            action: { default_title: 'Open Voxa', default_icon: { '16': 'icon-16.png', '32': 'icon-32.png' } },
+            icons: { '16': 'icon-16.png', '32': 'icon-32.png', '48': 'icon-48.png', '128': 'icon-128.png' },
             side_panel: { default_path: 'side-panel.html' },
             externally_connectable: { matches: [`${new URL(appUrl).origin}/*`] },
             content_security_policy: { extension_pages: "script-src 'self'; object-src 'self'" }

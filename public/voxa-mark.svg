@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Voxa</title>
+  <desc id="desc">A luminous V shaped voice signal.</desc>
+  <defs>
+    <linearGradient id="surface" x1="156" y1="104" x2="868" y2="920" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#171B26"/>
+      <stop offset="1" stop-color="#090B10"/>
+    </linearGradient>
+    <linearGradient id="signal" x1="244" y1="278" x2="778" y2="758" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#28D7FF"/>
+      <stop offset="0.48" stop-color="#5A83FF"/>
+      <stop offset="1" stop-color="#C45CFF"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="22" result="blur"/>
+      <feColorMatrix in="blur" values="1 0 0 0 0.20 0 1 0 0 0.45 0 0 1 0 1 0 0 0 .34 0"/>
+    </filter>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#surface)"/>
+  <rect x="33" y="33" width="958" height="958" rx="223" fill="none" stroke="#fff" stroke-opacity=".09" stroke-width="2"/>
+  <path d="M244 314 474 730c17 31 59 31 76 0l230-416" fill="none" stroke="url(#signal)" stroke-width="120" stroke-linecap="round" stroke-linejoin="round" opacity=".7" filter="url(#glow)"/>
+  <path d="M244 314 474 730c17 31 59 31 76 0l230-416" fill="none" stroke="url(#signal)" stroke-width="92" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M337 322 495 609c7 13 27 13 34 0l158-287" fill="none" stroke="#fff" stroke-opacity=".9" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="512" cy="744" r="17" fill="#9C6CFF"/>
+</svg>

@@ -6,14 +6,17 @@ import { spawnSync } from 'node:child_process';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const backend = join(root, 'backend');
 const envFile = join(backend, '.env');
+const systemPromptFile = join(backend, 'voxa_prompt.txt');
 const vercel = process.platform === 'win32' ? 'vercel.cmd' : 'vercel';
 const productionKeys = [
   'DATABASE_URL',
   'DEEPGRAM_API_KEY',
+  'NEON_AUTH_URL',
   'OPENROUTER_API_KEY',
   'OPENROUTER_MODEL',
   'STRIPE_SECRET_KEY',
   'STRIPE_WEBHOOK_SECRET',
+  'VOXA_EVAL_SUPERVISOR_MODEL',
   'VOXA_SYSTEM_PROMPT'
 ];
 
@@ -35,6 +38,7 @@ function parseEnv(source) {
 }
 
 const values = parseEnv(readFileSync(envFile, 'utf8'));
+values.set('VOXA_SYSTEM_PROMPT', readFileSync(systemPromptFile, 'utf8').trim());
 for (const key of productionKeys) {
   const value = values.get(key);
   if (!value) {

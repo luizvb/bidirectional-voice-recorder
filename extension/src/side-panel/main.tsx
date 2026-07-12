@@ -41,8 +41,12 @@ function App() {
 
   useEffect(() => {
     void refresh().catch((error) => { setLocalError(error.message); setBusy(false); });
-    const listener = (message: { type?: string; state?: CaptureState }) => {
+    const listener = (message: { type?: string; state?: CaptureState; auth?: { authToken?: string; authUser?: { name?: string; email?: string } } }) => {
       if (message.type === 'STATE_CHANGED' && message.state) setState(message.state);
+      if (message.type === 'AUTH_CHANGED') {
+        setAuthenticated(Boolean(message.auth?.authToken));
+        setUserName(message.auth?.authUser?.name || message.auth?.authUser?.email || 'Signed in');
+      }
     };
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
@@ -57,7 +61,7 @@ function App() {
   const active = state.phase === 'recording' || state.phase === 'paused';
   const status = useMemo(() => ({
     idle: 'Ready to record', preparing: 'Requesting access', recording: 'Recording', paused: 'Paused',
-    uploading: `Uploading ${state.progress || 0}%`, transcribing: 'Creating transcript', ready: 'Transcript ready',
+    awaiting_auth: 'Recording saved locally', uploading: `Uploading ${state.progress || 0}%`, transcribing: 'Creating transcript', ready: 'Transcript ready',
     failed: 'Action needed', recoverable: 'Recording saved locally'
   })[state.phase], [state.phase, state.progress]);
 
@@ -95,10 +99,10 @@ function App() {
             <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
             <span>I informed the participants and have permission to record this meeting.</span>
           </label>
-          <button className="primary" disabled={!authenticated || !consent || busy} onClick={() => run(() => send({ type: 'START_CAPTURE', consent, name }))}>
-            {authenticated ? 'Start recording' : 'Sign in to record'}
+          <button className="primary" disabled={!consent || busy} onClick={() => run(() => send({ type: 'START_CAPTURE', consent, name }))}>
+            Start recording
           </button>
-          <p className="helper">Voxa captures this Meet tab and your microphone. Recording starts only after you press the button.</p>
+          <p className="helper">Voxa captures this Meet tab and your microphone. If you are not signed in, the recording stays on this device and login is requested only after you stop.</p>
         </section>
       )}
 
@@ -116,12 +120,21 @@ function App() {
         <section className="processing"><div className="progress"><span style={{ width: state.phase === 'uploading' ? `${state.progress || 4}%` : '100%' }} /></div><p>Do not close Chrome while Voxa secures your recording.</p></section>
       )}
 
+      {state.phase === 'awaiting_auth' && state.sessionId && (
+        <section className="recovery">
+          <h1>Your recording is safe.</h1>
+          <p>Sign in to attach this recording to your Voxa account, upload it privately, and create the transcript.</p>
+          <button className="primary" disabled={busy} onClick={() => run(() => send({ type: 'OPEN_AUTH' }))}>Sign in and continue</button>
+          <button className="text-button" onClick={() => run(() => send({ type: 'DISCARD_LOCAL', sessionId: state.sessionId! }))}>Discard local copy</button>
+        </section>
+      )}
+
       {state.phase === 'ready' && (
         <section className="result"><h1>Your conversation is ready.</h1><p>The recording and transcript are available in Voxa.</p><button className="primary" onClick={() => chrome.tabs.create({ url: state.resultUrl || __VOXA_APP_URL__ })}>Open in Voxa</button></section>
       )}
 
       {(state.phase === 'recoverable' || state.phase === 'failed') && state.sessionId && (
-        <section className="recovery"><h1>Your recording is safe.</h1><p>{state.error || 'Upload it when your connection is available.'}</p><button className="primary" disabled={busy || !authenticated} onClick={() => run(() => send({ type: 'RETRY_UPLOAD', sessionId: state.sessionId! }))}>Retry upload</button><button className="text-button" onClick={() => run(() => send({ type: 'DISCARD_LOCAL', sessionId: state.sessionId! }))}>Discard local copy</button></section>
+        <section className="recovery"><h1>Your recording is safe.</h1><p>{state.error || 'Upload it when your connection is available.'}</p>{authenticated ? <button className="primary" disabled={busy} onClick={() => run(() => send({ type: 'RETRY_UPLOAD', sessionId: state.sessionId! }))}>Retry upload</button> : <button className="primary" disabled={busy} onClick={() => run(() => send({ type: 'OPEN_AUTH' }))}>Sign in and retry</button>}<button className="text-button" onClick={() => run(() => send({ type: 'DISCARD_LOCAL', sessionId: state.sessionId! }))}>Discard local copy</button></section>
       )}
 
       {(localError || (state.phase === 'failed' && !state.sessionId)) && <p className="error" role="alert">{localError || state.error}</p>}

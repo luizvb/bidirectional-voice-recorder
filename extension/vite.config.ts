@@ -30,7 +30,7 @@ export default defineConfig(({ mode }) => {
             minimum_chrome_version: '116',
             name: 'Voxa for Google Meet',
             description: 'Record Google Meet audio with consent and turn conversations into searchable transcripts.',
-            version: '0.1.1',
+            version: '0.1.3',
             permissions: ['activeTab', 'offscreen', 'sidePanel', 'storage', 'tabCapture'],
             host_permissions: ['https://meet.google.com/*', ...allowedOrigins],
             background: { service_worker: 'service-worker.js', type: 'module' },

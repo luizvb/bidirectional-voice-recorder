@@ -29,6 +29,14 @@ async function currentMeetTab() {
   return tab;
 }
 
+async function getAuth() {
+  return chrome.storage.local.get(['authToken', 'authUser']);
+}
+
+async function openAuthTab() {
+  return chrome.tabs.create({ url: `${__VOXA_APP_URL__}/extension-auth?extensionId=${chrome.runtime.id}` });
+}
+
 async function startCapture(name = 'Google Meet recording') {
   const current = await getState();
   if (ACTIVE_PHASES.has(current.phase)) throw new Error('A recording is already active.');
@@ -36,7 +44,19 @@ async function startCapture(name = 'Google Meet recording') {
   const sessionId = crypto.randomUUID();
   await setState({ phase: 'preparing', sessionId, tabId: tab.id });
   await ensureOffscreen();
-  const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+  // Omitting targetTabId captures the currently active tab and avoids requiring
+  // a separate activeTab grant from a toolbar-action click. The tab was already
+  // validated as the active Google Meet tab immediately above.
+  let streamId: string;
+  try {
+    streamId = await chrome.tabCapture.getMediaStreamId();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/not been invoked|activeTab/i.test(message)) {
+      throw new Error('Chrome needs one activation click for this Meet tab. Click the Voxa extension icon in the toolbar to reopen the panel, then press Start recording again.');
+    }
+    throw error;
+  }
   const response = await chrome.runtime.sendMessage({ type: 'OFFSCREEN_START', streamId, sessionId, name } satisfies RuntimeMessage);
   if (!response?.ok) throw new Error(response?.error || 'Could not start capture.');
   await setState({ phase: 'recording', sessionId, tabId: tab.id, startedAt: Date.now(), elapsedBeforePauseMs: 0 });
@@ -87,15 +107,33 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
-  if (message?.type !== 'VOXA_AUTH' || typeof message.token !== 'string' || !sender.url?.startsWith(__VOXA_APP_URL__)) return;
-  void chrome.storage.local.set({ authToken: message.token, authUser: message.user || null }).then(() => sendResponse({ ok: true }));
+  if (!sender.url?.startsWith(__VOXA_APP_URL__)) return;
+
+  if (message?.type === 'VOXA_CLOSE_AUTH_TAB') {
+    sendResponse({ ok: true });
+    if (sender.tab?.id) void chrome.tabs.remove(sender.tab.id).catch(() => {});
+    return false;
+  }
+
+  if (message?.type !== 'VOXA_AUTH' || typeof message.token !== 'string') return;
+  void (async () => {
+    await chrome.storage.local.set({ authToken: message.token, authUser: message.user || null });
+    chrome.runtime.sendMessage({ type: 'AUTH_CHANGED', auth: await getAuth() }).catch(() => {});
+    sendResponse({ ok: true });
+
+    const authTabId = sender.tab?.id;
+    if (authTabId) setTimeout(() => void chrome.tabs.remove(authTabId).catch(() => {}), 250);
+
+    const state = await getState();
+    if (state.phase === 'awaiting_auth' && state.sessionId) await processRecording(state.sessionId);
+  })().catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }));
   return true;
 });
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
   void (async () => {
     try {
-      if (message.type === 'GET_STATE') return sendResponse({ ok: true, state: await getState(), auth: await chrome.storage.local.get(['authToken', 'authUser']) });
+      if (message.type === 'GET_STATE') return sendResponse({ ok: true, state: await getState(), auth: await getAuth() });
       if (message.type === 'START_CAPTURE') {
         if (!message.consent) throw new Error('Confirm consent before recording.');
         await startCapture(message.name);
@@ -111,7 +149,16 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
         await setState({ ...state, phase: 'recording', startedAt: Date.now() });
       }
       if (message.type === 'STOP_CAPTURE') await chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP' } satisfies RuntimeMessage);
-      if (message.type === 'CAPTURE_READY') await processRecording(message.sessionId);
+      if (message.type === 'OPEN_AUTH') await openAuthTab();
+      if (message.type === 'CAPTURE_READY') {
+        const auth = await getAuth();
+        if (auth.authToken) {
+          await processRecording(message.sessionId);
+        } else {
+          await setState({ phase: 'awaiting_auth', sessionId: message.sessionId });
+          await openAuthTab();
+        }
+      }
       if (message.type === 'CAPTURE_ERROR') await setState({ ...(await getState()), phase: 'failed', error: message.error });
       if (message.type === 'RETRY_UPLOAD') await processRecording(message.sessionId);
       if (message.type === 'DISCARD_LOCAL') {
@@ -121,7 +168,12 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
       sendResponse({ ok: true });
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
-      await setState({ ...(await getState()), phase: 'failed', error: messageText });
+      const current = await getState();
+      if (message.type === 'START_CAPTURE' && current.phase === 'preparing') {
+        await setState({ phase: 'idle' });
+      } else {
+        await setState({ ...current, phase: 'failed', error: messageText });
+      }
       sendResponse({ ok: false, error: messageText });
     }
   })();

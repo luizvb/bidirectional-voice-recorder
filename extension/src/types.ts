@@ -1,4 +1,4 @@
-export type CapturePhase = 'idle' | 'preparing' | 'recording' | 'paused' | 'uploading' | 'transcribing' | 'ready' | 'failed' | 'recoverable';
+export type CapturePhase = 'idle' | 'preparing' | 'recording' | 'paused' | 'awaiting_auth' | 'uploading' | 'transcribing' | 'ready' | 'failed' | 'recoverable';
 
 export interface CaptureState {
   phase: CapturePhase;
@@ -18,6 +18,7 @@ export type RuntimeMessage =
   | { type: 'PAUSE_CAPTURE' }
   | { type: 'RESUME_CAPTURE' }
   | { type: 'STOP_CAPTURE' }
+  | { type: 'OPEN_AUTH' }
   | { type: 'RETRY_UPLOAD'; sessionId: string }
   | { type: 'DISCARD_LOCAL'; sessionId: string }
   | { type: 'OFFSCREEN_START'; streamId: string; sessionId: string; name: string }

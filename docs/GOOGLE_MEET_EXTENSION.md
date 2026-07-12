@@ -2,6 +2,8 @@
 
 Chrome Manifest V3 extension that records the current Google Meet tab and the user's microphone after explicit consent. Audio is stored locally until the private multipart upload and post-meeting transcription complete.
 
+Authentication is not required to start capture. For signed-out users, the finalized recording remains in extension IndexedDB, the Google sign-in flow opens after Stop, and upload resumes automatically under the authenticated account without changing the recording session ID.
+
 ## Local build
 
 ```bash
@@ -58,9 +60,10 @@ The deterministic archive is created at `release/voxa-meet-extension.zip`. The f
 ## Manual smoke test
 
 1. Open a Google Meet with another participant.
-2. Open the Voxa Side Panel and sign in.
+2. Open the Voxa Side Panel while signed out.
 3. Confirm consent and start recording.
 4. Verify local and remote voices, pause, resume, then stop.
-5. Verify upload and transcription state transitions.
-6. Close or navigate away from the Meet during a second recording and confirm a recoverable local copy appears.
-7. Delete the cloud recording and verify authenticated playback and transcript access stop working.
+5. Complete Google sign-in, verify the auth tab closes, and confirm the Side Panel immediately changes to upload/transcription.
+6. Verify the recording is associated with the signed-in account and the local recovery copy is deleted only after processing succeeds.
+7. Close or navigate away from the Meet during a second recording and confirm a recoverable local copy appears.
+8. Delete the cloud recording and verify authenticated playback and transcript access stop working.

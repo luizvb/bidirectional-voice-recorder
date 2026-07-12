@@ -3,7 +3,7 @@ const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 export const ANALYSIS_MODES = ['interview', 'language', 'meeting'] as const;
 export type AnalysisMode = typeof ANALYSIS_MODES[number];
 
-const DEFAULT_SYSTEM_PROMPT = `You are Voxa, a rigorous conversation analyst. Turn transcripts into evidence-grounded, practical reports.
+export const DEFAULT_SYSTEM_PROMPT = `You are Voxa, a rigorous conversation analyst. Turn transcripts into evidence-grounded, practical reports.
 
 Rules:
 - Use only evidence present in the transcript. Never invent questions, decisions, owners, deadlines, emotions, or facts.
@@ -28,6 +28,50 @@ export interface AnalyzeOptions {
   modes?: AnalysisMode[];
   outputLanguage?: string;
   context?: string;
+  systemPrompt?: string;
+}
+
+export interface JsonCompletionResult<T = any> {
+  data: T;
+  usage: LLMUsage;
+}
+
+export async function completeJsonWithOpenRouter<T = any>(input: {
+  apiKey: string;
+  model: string;
+  systemPrompt: string;
+  userPrompt: string;
+  maxTokens?: number;
+}): Promise<JsonCompletionResult<T>> {
+  if (!input.apiKey) throw new Error('Missing OPENROUTER_API_KEY in .env file.');
+  const response = await fetch(OPENROUTER_ENDPOINT, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${input.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: input.model,
+      messages: [
+        { role: 'system', content: input.systemPrompt },
+        { role: 'user', content: input.userPrompt }
+      ],
+      max_tokens: input.maxTokens || 8000,
+      response_format: { type: 'json_object' }
+    })
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.error) throw new Error(`OpenRouter AI failed: ${body.error?.message || response.statusText}`);
+  let content = String(body.choices?.[0]?.message?.content || '{}').trim();
+  if (content.startsWith('```json')) content = content.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+  else if (content.startsWith('```')) content = content.replace(/^```\s*/, '').replace(/\s*```$/, '');
+  try {
+    const totalTokens = Number(body.usage?.total_tokens) || 0;
+    const reportedCost = Number(body.usage?.cost);
+    return {
+      data: JSON.parse(content) as T,
+      usage: { totalTokens, costUsd: Number.isFinite(reportedCost) ? reportedCost : totalTokens * (0.075 / 1_000_000) }
+    };
+  } catch (error: any) {
+    throw new Error(`Failed to parse AI response as JSON: ${error.message}`);
+  }
 }
 
 export function normalizeAnalysisModes(value: unknown): AnalysisMode[] {
@@ -112,49 +156,13 @@ export async function analyzeTranscriptWithOpenRouter(
   model: string = 'google/gemini-2.5-flash-lite-preview-07-24',
   options: AnalyzeOptions = {}
 ): Promise<AnalysisResult> {
-  if (!apiKey) throw new Error('Missing OPENROUTER_API_KEY in .env file.');
-
-  const response = await fetch(OPENROUTER_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: process.env.VOXA_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT },
-        { role: 'user', content: buildAnalysisPrompt(transcriptText, options) }
-      ],
-      max_tokens: 8000,
-      response_format: { type: 'json_object' }
-    })
+  const result = await completeJsonWithOpenRouter({
+    apiKey,
+    model,
+    systemPrompt: options.systemPrompt || process.env.VOXA_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT,
+    userPrompt: buildAnalysisPrompt(transcriptText, options)
   });
-
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok || body.error) {
-    throw new Error(`OpenRouter AI failed: ${body.error?.message || response.statusText}`);
-  }
-
-  const rawContent = body.choices?.[0]?.message?.content || '{}';
-  let cleanContent = rawContent.trim();
-  if (cleanContent.startsWith('```json')) cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-  else if (cleanContent.startsWith('```')) cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
-
-  try {
-    const data = JSON.parse(cleanContent);
-    data.version ||= '2.0';
-    data.analysisModes = normalizeAnalysisModes(data.analysisModes || options.modes);
-    const totalTokens = body.usage?.total_tokens || 0;
-    const reportedCost = Number(body.usage?.cost);
-    return {
-      data,
-      usage: {
-        totalTokens,
-        costUsd: Number.isFinite(reportedCost) ? reportedCost : totalTokens * (0.075 / 1_000_000)
-      }
-    };
-  } catch (error: any) {
-    throw new Error(`Failed to parse AI response as JSON: ${error.message}`);
-  }
+  result.data.version ||= '2.0';
+  result.data.analysisModes = normalizeAnalysisModes(result.data.analysisModes || options.modes);
+  return result;
 }

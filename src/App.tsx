@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Plus, X } from 'lucide-react';
 import ComponentsShowcase from './components/ComponentsShowcase';
@@ -16,6 +16,7 @@ import { platform, type Recording } from './platform';
 
 export type AppView = 'workspace' | 'library';
 export type LibraryStatus = 'idle' | 'loading' | 'ready' | 'error';
+const EvalsLab = import.meta.env.DEV ? lazy(() => import('./components/EvalsLab')) : null;
 
 export default function App() {
   const isExtensionAuth = window.location.pathname === '/extension-auth';
@@ -35,6 +36,7 @@ export default function App() {
 
   const isElectronApp = platform.capabilities.kind === 'electron';
   const isUiPreview = import.meta.env.DEV && window.location.hash === '#/ui';
+  const isEvalsLab = import.meta.env.DEV && window.location.hash === '#/evals';
   const sidebarCollapsed = isCompact || !isSidebarOpen;
 
   const loadRecordings = useCallback(async () => {
@@ -134,6 +136,9 @@ export default function App() {
 
   if (isExtensionAuth) return <ExtensionAuth />;
   if (isUiPreview) return <ComponentsShowcase />;
+  if (isEvalsLab && isLoading) return <div className="app-loading"><span>Loading eval lab...</span></div>;
+  if (isEvalsLab && !isAuthenticated) return <div className="evals-auth"><Login /></div>;
+  if (isEvalsLab && EvalsLab) return <Suspense fallback={<div className="app-loading"><span>Loading eval lab...</span></div>}><EvalsLab /></Suspense>;
   if (isWidget) return <MiniWidget />;
   if (isLoading) {
     return (

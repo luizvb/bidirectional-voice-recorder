@@ -58,3 +58,39 @@ CREATE TABLE IF NOT EXISTS usage_logs (
   estimated_cost_usd NUMERIC(10,6),
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS eval_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id VARCHAR(255) REFERENCES users(id),
+  status VARCHAR(30) NOT NULL DEFAULT 'queued',
+  config JSONB NOT NULL,
+  insight_model TEXT NOT NULL,
+  supervisor_model TEXT NOT NULL,
+  prompt_hash VARCHAR(64) NOT NULL,
+  prompt_snapshot TEXT NOT NULL,
+  summary JSONB,
+  prompt_review JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS eval_cases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id UUID REFERENCES eval_runs(id) ON DELETE CASCADE,
+  position INT NOT NULL,
+  status VARCHAR(30) NOT NULL DEFAULT 'queued',
+  scenario JSONB,
+  transcript TEXT,
+  analysis JSONB,
+  deterministic_checks JSONB,
+  judgment JSONB,
+  metrics JSONB,
+  error TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP
+);
+ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS prompt_review JSONB;
+CREATE INDEX IF NOT EXISTS eval_runs_user_created_idx ON eval_runs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS eval_cases_run_position_idx ON eval_cases(run_id, position);

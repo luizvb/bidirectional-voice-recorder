@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import recordingsRouter from './routes/recordings';
 import stripeRouter from './routes/stripe';
+import evalsRouter from './routes/evals';
 import { requireAuth } from './middleware/auth';
 
 const app = express();
@@ -28,6 +29,10 @@ app.use('/api/stripe', stripeRouter);
 app.use(express.json());
 
 app.use('/api/recordings', requireAuth, recordingsRouter);
+
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api/internal/evals', requireAuth, evalsRouter);
+}
 
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {

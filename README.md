@@ -104,6 +104,21 @@ npm run dev:vite
 npm run build:web
 ```
 
+### Internal eval laboratory
+
+In development, authenticated team members can open `http://localhost:5173/#/evals`
+to generate synthetic conversations, run the production insight pipeline, grade the
+result with an independent supervisor model, and compare persisted runs. The lab
+supports editing and fingerprinting both the Voxa and supervisor system prompts from
+a dedicated modal, exporting one case
+or the merged run as CSV, and asking the supervisor for a consolidated diagnosis plus
+a complete replacement prompt after the suite finishes. Configure
+`VOXA_EVAL_SUPERVISOR_MODEL` with a model different from `OPENROUTER_MODEL`.
+
+The page is removed from production builds and `/api/internal/evals/*` is not mounted
+when `NODE_ENV=production`. Eval tables are initialized on first local use and are
+also declared in `app/schema.sql` for explicit database setup.
+
 Deploy the repository root to Vercel so the SPA and `/api` share one origin.
 Configure `VITE_NEON_AUTH_URL`, `NEON_AUTH_URL`, `DATABASE_URL`, Blob, Deepgram,
 OpenRouter, and Stripe environment variables. API requests require a Neon Auth

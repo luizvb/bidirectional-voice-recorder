@@ -1,13 +1,34 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { ANALYSIS_CONTRACT_VERSION, buildAnalysisOutputContract, buildAnalysisPrompt, normalizeAnalysisModes, sanitizeAnalysisResult } = require('../dist/services/llm');
+const { ANALYSIS_CONTRACT_VERSION, buildAnalysisOutputContract, buildAnalysisPrompt, extractSpeakerLabels, normalizeAnalysisModes, normalizeSelectedSpeakers, sanitizeAnalysisResult } = require('../dist/services/llm');
 const { completeJsonWithOpenRouter } = require('../dist/services/llm');
 
 test('analysis modes are validated, deduplicated and default to language', () => {
   assert.deepEqual(normalizeAnalysisModes(['meeting', 'interview', 'meeting', 'invalid']), ['meeting', 'interview']);
   assert.deepEqual(normalizeAnalysisModes([]), ['language']);
   assert.deepEqual(normalizeAnalysisModes('meeting'), ['language']);
+});
+
+test('speaker labels are extracted from Deepgram markdown and common pasted transcript formats', () => {
+  const transcript = [
+    '**Speaker 0** (00:01)',
+    'Hello there.',
+    '',
+    '**Speaker 1** (00:03)',
+    'Hi.',
+    'Ana: Vamos começar.',
+    '[Bruno]: Claro.',
+    '**Carla:** I can take that.',
+    '[00:01] Diego: Let us begin.',
+    'Decision: Move forward with the launch.',
+    '**Topic:** Launch readiness',
+    'Summary: The team aligned.',
+    '00:15: this timestamp is not a speaker',
+    'ana: duplicate label with different case'
+  ].join('\n');
+  assert.deepEqual(extractSpeakerLabels(transcript), ['Speaker 0', 'Speaker 1', 'Ana', 'Bruno', 'Carla', 'Diego']);
+  assert.deepEqual(normalizeSelectedSpeakers(['bruno', 'Speaker 0', 'missing'], transcript), ['Speaker 0', 'Bruno']);
 });
 
 test('combined analysis prompt includes selected schemas and safety boundaries', () => {
@@ -52,6 +73,21 @@ test('single analysis prompt excludes unselected instructions', () => {
   assert.match(prompt, /LANGUAGE LESSON LENS/);
   assert.doesNotMatch(prompt, /INTERVIEW LENS/);
   assert.doesNotMatch(prompt, /MEETING LENS/);
+});
+
+test('analysis prompt requests every selected speaker and sanitizer filters participant-specific output', () => {
+  const transcript = 'Ana: I will lead this.\nBruno: I will review this.';
+  const prompt = buildAnalysisPrompt(transcript, { modes: ['language'], selectedSpeakers: ['Ana', 'Bruno'] });
+  assert.match(prompt, /Participant-specific insights requested for: Ana, Bruno/);
+  assert.match(prompt, /do not silently analyze only the first participant/);
+
+  const raw = buildAnalysisOutputContract(['language']);
+  raw.languageClass.learnerProfiles = [
+    { ...raw.languageClass.learnerProfiles[0], speaker: 'Ana' },
+    { ...raw.languageClass.learnerProfiles[0], speaker: 'Bruno' }
+  ];
+  const sanitized = sanitizeAnalysisResult(raw, transcript, ['language'], ['Bruno']);
+  assert.deepEqual(sanitized.languageClass.learnerProfiles.map((profile) => profile.speaker), ['Bruno']);
 });
 
 test('analysis sanitizer enforces mode isolation, score ranges and exact evidence', () => {

@@ -64,6 +64,9 @@ export const locales = {
       deleteTitle: 'Delete this conversation?', deleteConfirm: 'This removes the recording from your library. This action cannot be undone.',
       analysisTypes: 'Analysis types', analysisContext: 'Optional context', analysisContextPlaceholder: 'Role, goals, agenda or what matters most…',
       exportPdf: 'Export PDF', pdfSaved: 'PDF report saved.', pdfFailed: 'Could not generate the PDF report.',
+      importTranscript: 'Import transcript', importTitle: 'Add a transcript', importDescription: 'Create a conversation from text you already have and generate insights without uploading audio.',
+      conversationTitle: 'Conversation title', conversationTitlePlaceholder: 'Name this conversation', transcriptPlaceholder: 'Paste the full transcript here…', importAction: 'Add to library', importFailed: 'Could not import the transcript.',
+      speakersForInsights: 'Speakers to analyze', selectAll: 'Select all', clearAll: 'Clear all', selectSpeakerRequired: 'Select at least one speaker to generate insights.',
     },
     ai: {
       overview: 'Conversation overview', primaryIntent: 'Primary intent', summary: 'Summary', cefrLevel: 'CEFR level',
@@ -153,6 +156,9 @@ export const locales = {
       deleteTitle: 'Excluir esta conversa?', deleteConfirm: 'A gravação será removida da biblioteca. Esta ação não pode ser desfeita.',
       analysisTypes: 'Tipos de análise', analysisContext: 'Contexto opcional', analysisContextPlaceholder: 'Vaga, objetivos, pauta ou o que mais importa…',
       exportPdf: 'Exportar PDF', pdfSaved: 'Relatório PDF salvo.', pdfFailed: 'Não foi possível gerar o relatório PDF.',
+      importTranscript: 'Adicionar transcrição', importTitle: 'Adicionar uma transcrição', importDescription: 'Crie uma conversa a partir de um texto existente e gere insights sem enviar áudio.',
+      conversationTitle: 'Título da conversa', conversationTitlePlaceholder: 'Nomeie esta conversa', transcriptPlaceholder: 'Cole a transcrição completa aqui…', importAction: 'Adicionar à biblioteca', importFailed: 'Não foi possível adicionar a transcrição.',
+      speakersForInsights: 'Participantes para analisar', selectAll: 'Selecionar todos', clearAll: 'Limpar seleção', selectSpeakerRequired: 'Selecione pelo menos um participante para gerar insights.',
     },
     ai: {
       overview: 'Visão geral da conversa', primaryIntent: 'Intenção principal', summary: 'Resumo', cefrLevel: 'Nível CEFR',
@@ -242,6 +248,9 @@ export const locales = {
       deleteTitle: '¿Eliminar esta conversación?', deleteConfirm: 'La grabación se eliminará de tu biblioteca. Esta acción no se puede deshacer.',
       analysisTypes: 'Tipos de análisis', analysisContext: 'Contexto opcional', analysisContextPlaceholder: 'Puesto, objetivos, agenda o lo más importante…',
       exportPdf: 'Exportar PDF', pdfSaved: 'Informe PDF guardado.', pdfFailed: 'No se pudo generar el informe PDF.',
+      importTranscript: 'Agregar transcripción', importTitle: 'Agregar una transcripción', importDescription: 'Crea una conversación desde un texto existente y genera insights sin subir audio.',
+      conversationTitle: 'Título de la conversación', conversationTitlePlaceholder: 'Nombra esta conversación', transcriptPlaceholder: 'Pega aquí la transcripción completa…', importAction: 'Agregar a la biblioteca', importFailed: 'No se pudo agregar la transcripción.',
+      speakersForInsights: 'Participantes para analizar', selectAll: 'Seleccionar todos', clearAll: 'Limpiar selección', selectSpeakerRequired: 'Selecciona al menos un participante para generar insights.',
     },
     ai: {
       overview: 'Resumen de la conversación', primaryIntent: 'Intención principal', summary: 'Resumen', cefrLevel: 'Nivel CEFR',

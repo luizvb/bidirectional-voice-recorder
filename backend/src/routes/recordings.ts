@@ -7,6 +7,7 @@ import {
   getAnalysis,
   getTranscript,
   getRecordingStatus,
+  importTranscript,
   streamRecording,
   listRecordings,
   transcribeRecording,
@@ -20,6 +21,7 @@ const upload = multer({
 const router = express.Router();
 
 router.post('/upload', createRecordingUploadToken);
+router.post('/import-transcript', importTranscript);
 router.post('/', upload.single('audio'), uploadRecording);
 router.get('/', listRecordings);
 router.post('/:id/transcribe', transcribeRecording);

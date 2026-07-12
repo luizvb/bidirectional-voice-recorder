@@ -48,9 +48,15 @@ export class WebPlatform implements VoxaPlatform {
     });
   }
 
+  importTranscript(input: { name: string; transcript: string }) {
+    return request<Recording>('/api/recordings/import-transcript', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    });
+  }
+
   deleteRecording(id: string) { return request<void>(`/api/recordings/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
   transcribe(input: { recordingId: string; maxQuality?: boolean }) { return request<{ markdown: string }>(`/api/recordings/${encodeURIComponent(input.recordingId)}/transcribe`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maxQuality: Boolean(input.maxQuality) }) }); }
-  getTranscript(id: string) { return request<{ markdown: string } | null>(`/api/recordings/${encodeURIComponent(id)}/transcript`); }
+  getTranscript(id: string) { return request<{ markdown: string; speakers?: string[] } | null>(`/api/recordings/${encodeURIComponent(id)}/transcript`); }
   analyze(input: AnalysisInput) { return request<any>(`/api/recordings/${encodeURIComponent(input.recordingId)}/analyze`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }); }
   getAnalysis(id: string) { return request<any | null>(`/api/recordings/${encodeURIComponent(id)}/analysis`); }
   createCheckoutSession() { return request<{ url: string | null }>('/api/stripe/create-checkout-session', { method: 'POST', headers: { 'Content-Type': 'application/json' } }); }

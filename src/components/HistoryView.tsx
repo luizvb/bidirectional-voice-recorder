@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Clock3,
   FileAudio,
+  FilePlus2,
   FileText,
   Download,
   Loader2,
@@ -71,6 +72,9 @@ function formatDuration(ms: number) {
 }
 
 function TranscriptDocument({ markdown, youLabel }: { markdown: string; youLabel: string }) {
+  if (!/^\s*\*\*[^*\n]+\*\*(?:\s*\([^\n)]*\))?\s*$/m.test(markdown)) {
+    return <pre className="transcript-raw">{markdown}</pre>;
+  }
   const blocks = markdown.split(/(?:\r?\n){2,}/).filter((block) => block.trim());
 
   return (
@@ -118,6 +122,8 @@ export default function HistoryView({
   const [aiData, setAiData] = useState<AnalysisState>({ isAnalyzing: false });
   const [analysisModes, setAnalysisModes] = useState<AnalysisMode[]>(getSavedAnalysisModes);
   const [analysisContext, setAnalysisContext] = useState('');
+  const [detectedSpeakers, setDetectedSpeakers] = useState<string[]>([]);
+  const [selectedSpeakers, setSelectedSpeakers] = useState<string[]>([]);
   const [pdfStatus, setPdfStatus] = useState('');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [activeTab, setActiveTab] = useState<'transcript' | 'analysis'>('transcript');
@@ -127,6 +133,11 @@ export default function HistoryView({
   const [autoProcessStep, setAutoProcessStep] = useState('');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importTitle, setImportTitle] = useState('');
+  const [importTranscript, setImportTranscript] = useState('');
+  const [importStatus, setImportStatus] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const autoProcessAttemptedRef = useRef<string | null>(null);
 
@@ -154,6 +165,8 @@ export default function HistoryView({
       setAiData({ isAnalyzing: false });
       setShowDeleteDialog(false);
       setPdfStatus('');
+      setDetectedSpeakers([]);
+      setSelectedSpeakers([]);
 
       if (audioRef.current) {
         audioRef.current.pause();
@@ -173,6 +186,9 @@ export default function HistoryView({
           isTranscribing: false,
           status: t('history', 'transcriptSaved'),
         });
+        const speakers = result?.speakers || [];
+        setDetectedSpeakers(speakers);
+        setSelectedSpeakers(speakers);
 
         const analysis = await platform.getAnalysis(selected.id);
         setAiData(analysis
@@ -245,9 +261,36 @@ export default function HistoryView({
         modes: analysisModes,
         outputLanguage: locale,
         context: analysisContext,
+        selectedSpeakers: detectedSpeakers.length ? selectedSpeakers : undefined,
       }), isAnalyzing: false });
     } catch (error: any) {
       setAiData({ isAnalyzing: false, status: error?.message || t('history', 'processingFailed'), error: true });
+    }
+  };
+
+  const toggleSpeaker = (speaker: string) => {
+    setSelectedSpeakers((current) => current.includes(speaker)
+      ? current.filter((item) => item !== speaker)
+      : [...current, speaker]);
+  };
+
+  const handleImportTranscript = async () => {
+    const name = importTitle.trim();
+    const transcript = importTranscript.trim();
+    if (!name || !transcript) return;
+    setIsImporting(true);
+    setImportStatus('');
+    try {
+      const conversation = await platform.importTranscript({ name, transcript });
+      setShowImportDialog(false);
+      setImportTitle('');
+      setImportTranscript('');
+      await loadRecordings();
+      onSelect(conversation.id);
+    } catch (error: any) {
+      setImportStatus(error?.message || t('history', 'importFailed'));
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -301,10 +344,13 @@ export default function HistoryView({
             <h2>{t('library', 'title')}</h2>
             <p>{t('library', 'subtitle')}</p>
           </div>
-          <label className="search-field">
-            <Search />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('history', 'search')} />
-          </label>
+          <div className="library-actions">
+            <label className="search-field">
+              <Search />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('history', 'search')} />
+            </label>
+            <button type="button" className="button button-secondary" onClick={() => setShowImportDialog(true)}><FilePlus2 />{t('history', 'importTranscript')}</button>
+          </div>
         </section>
 
         {libraryStatus === 'loading' && recordings.length === 0 ? (
@@ -323,7 +369,7 @@ export default function HistoryView({
             <span className="empty-icon"><FileAudio /></span>
             <strong>{t('library', 'emptyTitle')}</strong>
             <p>{t('library', 'emptyDescription')}</p>
-            <button type="button" className="button button-primary" onClick={onStartRecording}>{t('navigation', 'newRecording')}</button>
+            <div className="empty-actions"><button type="button" className="button button-primary" onClick={onStartRecording}>{t('navigation', 'newRecording')}</button><button type="button" className="button button-secondary" onClick={() => setShowImportDialog(true)}>{t('history', 'importTranscript')}</button></div>
           </div>
         ) : filteredRecordings.length === 0 ? (
           <div className="empty-state library-empty">
@@ -346,12 +392,28 @@ export default function HistoryView({
                   <span><strong>{recording.name}</strong><small>{recording.transcript ? t('library', 'transcriptReady') : t('library', 'audioSaved')}</small></span>
                 </span>
                 <time>{recording.createdAt ? new Date(recording.createdAt).toLocaleDateString(locale) : '—'}</time>
-                <span>{formatDuration(recording.durationMs)}</span>
+                <span>{recording.hasAudio === false ? '—' : formatDuration(recording.durationMs)}</span>
                 <span className={recording.transcript ? 'recording-state is-ready' : 'recording-state'}>{recording.transcript ? t('library', 'ready') : t('library', 'audio')}</span>
               </button>
             ))}
           </div>
         )}
+        <AnimatePresence>
+          {showImportDialog && (
+            <motion.div className="modal-layer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <motion.section className="import-dialog" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 6, opacity: 0 }} role="dialog" aria-modal="true" aria-labelledby="import-transcript-title">
+                <button type="button" className="icon-button confirm-close" onClick={() => setShowImportDialog(false)} aria-label={t('common', 'close')}><X /></button>
+                <span className="import-icon"><FilePlus2 /></span>
+                <h3 id="import-transcript-title">{t('history', 'importTitle')}</h3>
+                <p>{t('history', 'importDescription')}</p>
+                <label><span>{t('history', 'conversationTitle')}</span><input value={importTitle} maxLength={255} onChange={(event) => setImportTitle(event.target.value)} placeholder={t('history', 'conversationTitlePlaceholder')} autoFocus /></label>
+                <label><span>{t('history', 'transcript')}</span><textarea value={importTranscript} maxLength={100000} onChange={(event) => setImportTranscript(event.target.value)} placeholder={t('history', 'transcriptPlaceholder')} rows={12} /></label>
+                {importStatus && <p className="form-error" role="alert">{importStatus}</p>}
+                <div className="confirm-actions"><button type="button" className="button button-secondary" onClick={() => setShowImportDialog(false)}>{t('common', 'cancel')}</button><button type="button" className="button button-primary" onClick={handleImportTranscript} disabled={isImporting || !importTitle.trim() || !importTranscript.trim()}>{isImporting && <Loader2 className="spin" />}{t('history', 'importAction')}</button></div>
+              </motion.section>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
     );
   }
@@ -375,7 +437,7 @@ export default function HistoryView({
             <h2>{selected.name}</h2>
             <div className="detail-meta">
               <span><CalendarDays /> {selected.createdAt ? new Date(selected.createdAt).toLocaleString(locale) : t('library', 'unknownDate')}</span>
-              <span><Clock3 /> {formatDuration(selected.durationMs)}</span>
+              {selected.hasAudio !== false && <span><Clock3 /> {formatDuration(selected.durationMs)}</span>}
               <span><CheckCircle2 /> {selected.transcript ? t('library', 'transcriptReady') : t('library', 'audioSaved')}</span>
             </div>
           </div>
@@ -383,7 +445,7 @@ export default function HistoryView({
         </div>
       </header>
 
-      <section className="audio-player">
+      {selected.hasAudio !== false && <section className="audio-player">
         <button type="button" className="player-button" onClick={togglePlay} aria-label={isPlaying ? t('history', 'pauseAudio') : t('history', 'playAudio')}>
           {isPlaying ? <Pause /> : <Play />}
         </button>
@@ -391,7 +453,7 @@ export default function HistoryView({
           <div className="player-times"><time>{formatDuration(currentTime * 1000)}</time><time>{formatDuration(selected.durationMs)}</time></div>
           <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
         </div>
-      </section>
+      </section>}
 
       {isAutoProcessing && (
         <div className="processing-banner" role="status">
@@ -411,17 +473,17 @@ export default function HistoryView({
             </button>
           </div>
 
-          {activeTab === 'transcript' ? (
+          {activeTab === 'transcript' ? (selected.hasAudio !== false ? (
             <button type="button" className="button button-secondary" onClick={handleTranscribe} disabled={transcriptData.isTranscribing} data-keyboard-primary="true">
               {transcriptData.isTranscribing ? <Loader2 className="spin" /> : <FileText />}
               {transcriptData.markdown ? t('history', 'retranscribe') : t('history', 'transcribeAudio')}
             </button>
-          ) : transcriptData.markdown ? (
+          ) : null) : transcriptData.markdown ? (
             <div className="analysis-toolbar-actions">
               {aiData.analysis && <button type="button" className="button button-secondary" onClick={handleExportPdf} disabled={isExportingPdf}>
                 {isExportingPdf ? <Loader2 className="spin" /> : <Download />}{t('history', 'exportPdf')}
               </button>}
-              <button type="button" className="button button-secondary" onClick={handleAnalyze} disabled={aiData.isAnalyzing} data-keyboard-primary="true">
+              <button type="button" className="button button-secondary" onClick={handleAnalyze} disabled={aiData.isAnalyzing || (detectedSpeakers.length > 0 && selectedSpeakers.length === 0)} data-keyboard-primary="true">
                 {aiData.isAnalyzing ? <Loader2 className="spin" /> : <Sparkles />}
                 {aiData.analysis ? t('history', 'reAnalyze') : t('history', 'generateAiReport')}
               </button>
@@ -437,6 +499,11 @@ export default function HistoryView({
                 {ANALYSIS_MODES.map((mode) => <button key={mode} type="button" className={analysisModes.includes(mode) ? 'is-selected' : ''} onClick={() => toggleAnalysisMode(mode)} aria-pressed={analysisModes.includes(mode)}>{analysisModes.includes(mode) && <Check />}{t('analysisModes', mode)}</button>)}
               </div>
             </div>
+            {!!detectedSpeakers.length && <div>
+              <div className="config-heading-row"><span className="config-label">{t('history', 'speakersForInsights')}</span><button type="button" onClick={() => setSelectedSpeakers(selectedSpeakers.length === detectedSpeakers.length ? [] : detectedSpeakers)}>{selectedSpeakers.length === detectedSpeakers.length ? t('history', 'clearAll') : t('history', 'selectAll')}</button></div>
+              <div className="analysis-mode-picker speaker-picker">{detectedSpeakers.map((speaker) => <button key={speaker} type="button" className={selectedSpeakers.includes(speaker) ? 'is-selected' : ''} onClick={() => toggleSpeaker(speaker)} aria-pressed={selectedSpeakers.includes(speaker)}>{selectedSpeakers.includes(speaker) && <Check />}{speaker}</button>)}</div>
+              {selectedSpeakers.length === 0 && <p className="config-error">{t('history', 'selectSpeakerRequired')}</p>}
+            </div>}
             <label className="analysis-context-field"><span>{t('history', 'analysisContext')}</span><input value={analysisContext} onChange={(event) => setAnalysisContext(event.target.value)} placeholder={t('history', 'analysisContextPlaceholder')} /></label>
             {pdfStatus && <p className="analysis-export-status">{pdfStatus}</p>}
           </div>
@@ -468,7 +535,7 @@ export default function HistoryView({
                   <div className={aiData.error ? 'content-status is-error' : 'content-status'}>
                     <Sparkles /><strong>{aiData.status || t('history', 'readyForAnalysis')}</strong>
                     <p>{transcriptData.markdown ? t('history', 'analysisEmptyDescription') : t('history', 'transcriptRequired')}</p>
-                    {transcriptData.markdown && <button type="button" className="button button-secondary" onClick={handleAnalyze}>{t('history', 'generateAiReport')}</button>}
+                    {transcriptData.markdown && <button type="button" className="button button-secondary" onClick={handleAnalyze} disabled={detectedSpeakers.length > 0 && selectedSpeakers.length === 0}>{t('history', 'generateAiReport')}</button>}
                   </div>
                 )}
               </motion.div>

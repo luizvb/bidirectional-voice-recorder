@@ -207,7 +207,7 @@ ipcMain.handle('recordings:list', async (_event, input = {}) => {
     const recordings = await response.json();
     return recordings.map((recording) => ({
       ...recording,
-      playbackUrl: playbackUrlFor(recording.file)
+      playbackUrl: recording.hasAudio === false ? undefined : (recording.playbackUrl || playbackUrlFor(recording.file))
     }));
   } catch (error) {
     console.error('Could not list recordings:', error);
@@ -269,6 +269,21 @@ ipcMain.handle('recordings:save', async (_event, input) => {
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(`Could not save recording to Vercel Blob: ${reason}`);
   }
+});
+
+ipcMain.handle('recordings:import-transcript', async (_event, input) => {
+  const response = await fetchApi('/api/recordings/import-transcript', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${input.authToken || ''}`
+    },
+    body: JSON.stringify({ name: input.name, transcript: input.transcript })
+  });
+  if (!response.ok) throw new Error((await response.text()) || 'Could not import transcript');
+  const conversation = await response.json();
+  if (mainWindow) mainWindow.webContents.send('recordings:changed', conversation);
+  return conversation;
 });
 
 ipcMain.handle('recordings:open-folder', async () => {
@@ -367,7 +382,8 @@ ipcMain.handle('llm:analyze', async (_event, input) => {
     body: JSON.stringify({
       modes: input.modes,
       outputLanguage: input.outputLanguage,
-      context: input.context
+      context: input.context,
+      selectedSpeakers: input.selectedSpeakers
     })
   });
 

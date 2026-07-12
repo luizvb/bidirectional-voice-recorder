@@ -3,9 +3,10 @@ import { del, get, put } from '@vercel/blob';
 import { handleUpload, HandleUploadBody } from '@vercel/blob/client';
 import { waitUntil } from '@vercel/functions';
 import { Readable } from 'node:stream';
+import { randomUUID } from 'node:crypto';
 import db from '../config/db';
 import { transcribeWithDeepgram } from '../services/transcription';
-import { analyzeTranscriptWithOpenRouter, normalizeAnalysisModes } from '../services/llm';
+import { analyzeTranscriptWithOpenRouter, extractSpeakerLabels, normalizeAnalysisModes, normalizeSelectedSpeakers } from '../services/llm';
 
 async function ensureUser(userId: string, email = 'unknown@voxa'): Promise<void> {
   await db.query(`
@@ -145,6 +146,60 @@ export const uploadRecording = async (req: Request, res: Response): Promise<void
   }
 };
 
+export const importTranscript = async (req: Request, res: Response): Promise<void> => {
+  const userId = req.user!.id;
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  const markdown = typeof req.body?.transcript === 'string' ? req.body.transcript.trim() : '';
+  if (!name || name.length > 255) {
+    res.status(400).json({ error: 'Conversation title is required and must be at most 255 characters.' });
+    return;
+  }
+  if (!markdown || markdown.length > 100_000) {
+    res.status(400).json({ error: 'Transcript is required and must be at most 100,000 characters.' });
+    return;
+  }
+
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  try {
+    await ensureUser(userId, req.user?.email);
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`
+        INSERT INTO recordings (id, user_id, name, duration_ms, size_bytes, mode, local_file_path, mime_type, state, created_at)
+        VALUES ($1, $2, $3, 0, 0, 'transcript-import', NULL, NULL, 'ready', $4)
+      `, [id, userId, name, createdAt]);
+      await client.query(`
+        INSERT INTO transcripts (recording_id, provider, markdown)
+        VALUES ($1, 'imported', $2)
+      `, [id, markdown]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    res.status(201).json({
+      id,
+      name,
+      createdAt,
+      durationMs: 0,
+      mode: 'transcript-import',
+      sizeBytes: 0,
+      hasAudio: false,
+      playbackUrl: undefined,
+      transcript: { ready: true },
+      speakers: extractSpeakerLabels(markdown)
+    });
+  } catch (error: any) {
+    console.error('Error importing transcript:', error);
+    res.status(500).json({ error: error.message || 'Could not import transcript.' });
+  }
+};
+
 export const listRecordings = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.user!.id;
@@ -166,6 +221,7 @@ export const listRecordings = async (req: Request, res: Response): Promise<void>
       file: undefined,
       playbackUrl: `/api/recordings/${r.id}/media`,
       sizeBytes: r.size_bytes,
+      hasAudio: Boolean(r.local_file_path),
       transcript: r.has_transcript ? { ready: true } : null,
       hasAnalysis: r.has_analysis
     }));
@@ -192,7 +248,7 @@ export const getTranscript = async (req: Request, res: Response): Promise<void> 
       res.status(404).json({ error: 'Transcript not found' });
       return;
     }
-    res.json({ provider: rows[0].provider, markdown: rows[0].markdown, createdAt: rows[0].created_at });
+    res.json({ provider: rows[0].provider, markdown: rows[0].markdown, createdAt: rows[0].created_at, speakers: extractSpeakerLabels(rows[0].markdown) });
   } catch (error: any) {
     console.error('Error loading transcript:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
@@ -370,10 +426,16 @@ export const analyzeRecording = async (req: Request, res: Response): Promise<voi
     const modes = normalizeAnalysisModes(req.body?.modes);
     const outputLanguage = typeof req.body?.outputLanguage === 'string' ? req.body.outputLanguage : 'pt-BR';
     const context = typeof req.body?.context === 'string' ? req.body.context : '';
+    const selectedSpeakers = normalizeSelectedSpeakers(req.body?.selectedSpeakers, transcript.markdown);
+    if (Array.isArray(req.body?.selectedSpeakers) && selectedSpeakers.length === 0) {
+      res.status(400).json({ error: 'Select at least one speaker found in the transcript.' });
+      return;
+    }
     const analysisResult = await analyzeTranscriptWithOpenRouter(apiKey, transcript.markdown, model, {
       modes,
       outputLanguage,
-      context
+      context,
+      selectedSpeakers: selectedSpeakers.length ? selectedSpeakers : undefined
     });
     
     await db.query(`

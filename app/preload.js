@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('recorder', {
   recordingsRoot: () => ipcRenderer.invoke('recordings:root'),
   listRecordings: (input) => ipcRenderer.invoke('recordings:list', input),
   saveRecording: (recording) => ipcRenderer.invoke('recordings:save', recording),
+  importTranscript: (input) => ipcRenderer.invoke('recordings:import-transcript', input),
   openRecordingsFolder: () => ipcRenderer.invoke('recordings:open-folder'),
   deleteRecording: (id, auth = {}) => ipcRenderer.invoke('recordings:delete', { id, ...auth }),
   transcribeWithDeepgram: (input) => ipcRenderer.invoke('transcriptions:deepgram', input),

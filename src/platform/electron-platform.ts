@@ -8,6 +8,7 @@ export class ElectronPlatform implements VoxaPlatform {
 
   async listRecordings() { return window.recorder.listRecordings(await this.auth()); }
   async saveRecording(input: SaveRecordingInput) { return window.recorder.saveRecording({ ...input, ...(await this.auth()) }); }
+  async importTranscript(input: { name: string; transcript: string }) { return window.recorder.importTranscript({ ...input, ...(await this.auth()) }); }
   async deleteRecording(id: string) { await window.recorder.deleteRecording(id, await this.auth()); }
   async transcribe(input: { recordingId: string; maxQuality?: boolean }) { return window.recorder.transcribeWithDeepgram({ ...input, ...(await this.auth()) }); }
   async getTranscript(recordingId: string) { return window.recorder.getTranscript(recordingId, await this.auth()); }

@@ -42,6 +42,7 @@ export interface AnalyzeOptions {
   modes?: AnalysisMode[];
   outputLanguage?: string;
   context?: string;
+  selectedSpeakers?: string[];
   systemPrompt?: string;
 }
 
@@ -118,6 +119,54 @@ export function normalizeAnalysisModes(value: unknown): AnalysisMode[] {
   const modes = value.filter((mode): mode is AnalysisMode => ANALYSIS_MODES.includes(mode as AnalysisMode));
   const uniqueModes = [...new Set(modes)].slice(0, ANALYSIS_MODES.length);
   return uniqueModes.length > 0 ? uniqueModes : ['language'];
+}
+
+export function extractSpeakerLabels(transcriptText: string): string[] {
+  const speakers: string[] = [];
+  const seen = new Set<string>();
+  const structuralLabels = new Set([
+    'action', 'action item', 'action items', 'agenda', 'answer', 'context', 'date',
+    'decision', 'decisions', 'key point', 'key points', 'note', 'notes', 'objective',
+    'purpose', 'question', 'summary', 'time', 'title', 'topic', 'topics', 'transcript'
+  ]);
+  const add = (value: string) => {
+    const speaker = value.replace(/\s+/g, ' ').trim();
+    const key = speaker.toLocaleLowerCase();
+    if (!speaker || speaker.length > 80 || structuralLabels.has(key) || seen.has(key)) return;
+    seen.add(key);
+    speakers.push(speaker);
+  };
+
+  for (const line of String(transcriptText || '').split(/\r?\n/)) {
+    const inlineBoldTurn = line.match(/^\s*\*\*([^*:\n]{1,80}):\*\*\s+\S/);
+    if (inlineBoldTurn) {
+      add(inlineBoldTurn[1]);
+      continue;
+    }
+
+    const markdownHeading = line.match(/^\s*\*\*([^*\n]{1,80})\*\*(?:\s*\([^)]*\))?\s*$/);
+    if (markdownHeading) {
+      add(markdownHeading[1]);
+      continue;
+    }
+
+    const timestampedTurn = line.match(/^\s*\[\d{1,2}:\d{2}(?::\d{2})?\]\s+([^:\n]{1,80})\s*:\s+\S/);
+    if (timestampedTurn) {
+      add(timestampedTurn[1]);
+      continue;
+    }
+
+    const labelledTurn = line.match(/^\s*(?:\[\s*)?([^:\]\n]{1,80})(?:\s*\])?\s*:\s+\S/);
+    if (labelledTurn && !/^\d{1,2}:\d{2}(?::\d{2})?$/.test(labelledTurn[1].trim())) add(labelledTurn[1]);
+  }
+  return speakers;
+}
+
+export function normalizeSelectedSpeakers(value: unknown, transcriptText: string): string[] {
+  const detected = extractSpeakerLabels(transcriptText);
+  if (!Array.isArray(value)) return detected;
+  const requested = new Set(value.filter((item): item is string => typeof item === 'string').map((item) => item.trim().toLocaleLowerCase()));
+  return detected.filter((speaker) => requested.has(speaker.toLocaleLowerCase()));
 }
 
 const evidenceExample = { speaker: '', quote: 'exact consecutive transcript quote' };
@@ -229,6 +278,7 @@ export function buildAnalysisPrompt(transcriptText: string, options: AnalyzeOpti
   const modes = normalizeAnalysisModes(options.modes);
   const outputLanguage = String(options.outputLanguage || 'pt-BR').slice(0, 32);
   const context = String(options.context || '').trim().slice(0, 2000);
+  const selectedSpeakers = normalizeSelectedSpeakers(options.selectedSpeakers, transcriptText);
 
   const modeInstructions: Record<AnalysisMode, string> = {
     interview: `INTERVIEW LENS - think like a structured interviewer and interview coach.
@@ -262,6 +312,7 @@ export function buildAnalysisPrompt(transcriptText: string, options: AnalyzeOpti
   const outputContract = JSON.stringify(buildAnalysisOutputContract(modes), null, 2);
   return `Create a Voxa specialist analysis in ${outputLanguage}.
 Selected modes: ${modes.join(', ')}.
+${selectedSpeakers.length ? `Participant-specific insights requested for: ${selectedSpeakers.join(', ')}. Use the entire transcript as context, but create learnerProfiles, participantViews, corrections and other speaker-specific evaluations only for these selected labels. Include every selected label when there is enough evidence; do not silently analyze only the first participant.\n` : ''}
 ${context ? `Optional user context: ${context}\nRemember: context guides relevance but is not transcript evidence.\n` : ''}
 ${selectedInstructions}
 
@@ -470,7 +521,7 @@ function sanitizeMeeting(value: any, stats: { removedClaims: number; clearedOwne
   return value;
 }
 
-export function sanitizeAnalysisResult(raw: any, transcriptText: string, requestedModes: unknown): any {
+export function sanitizeAnalysisResult(raw: any, transcriptText: string, requestedModes: unknown, requestedSpeakers?: unknown): any {
   const modes = normalizeAnalysisModes(requestedModes);
   const stats = { removedEvidence: 0, invalidScores: 0, removedClaims: 0, clearedOwners: 0 };
   const cleaned = sanitizeNode(raw && typeof raw === 'object' ? raw : {}, transcriptText, stats);
@@ -478,6 +529,17 @@ export function sanitizeAnalysisResult(raw: any, transcriptText: string, request
   const interview = modes.includes('interview') ? sanitizeInterview(sanitized.interview, stats) : null;
   const languageClass = modes.includes('language') ? sanitizeLanguage(sanitized.languageClass, transcriptText, stats) : null;
   const meeting = modes.includes('meeting') ? sanitizeMeeting(sanitized.meeting, stats) : null;
+  const selectedSpeakers = Array.isArray(requestedSpeakers)
+    ? normalizeSelectedSpeakers(requestedSpeakers, transcriptText)
+    : null;
+  const selectedKeys = selectedSpeakers ? new Set(selectedSpeakers.map((speaker) => speaker.toLocaleLowerCase())) : null;
+  if (selectedKeys && languageClass) {
+    languageClass.learnerProfiles = asSelectedSpeakerItems(languageClass.learnerProfiles, 'speaker', selectedKeys);
+    languageClass.corrections = asSelectedSpeakerItems(languageClass.corrections, 'speaker', selectedKeys);
+  }
+  if (selectedKeys && meeting) {
+    meeting.participantViews = asSelectedSpeakerItems(meeting.participantViews, 'speaker', selectedKeys);
+  }
   clearUngroundedFields(sanitized.summary?.purpose, ['statement'], stats);
   clearUngroundedFields(sanitized.summary?.executiveBrief, ['statement'], stats);
   const summary = {
@@ -509,6 +571,11 @@ export function sanitizeAnalysisResult(raw: any, transcriptText: string, request
   };
 }
 
+function asSelectedSpeakerItems(value: unknown, key: string, selectedKeys: Set<string>): any[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item) => selectedKeys.has(String(item?.[key] || '').trim().toLocaleLowerCase()));
+}
+
 export async function analyzeTranscriptWithOpenRouter(
   apiKey: string,
   transcriptText: string,
@@ -522,6 +589,6 @@ export async function analyzeTranscriptWithOpenRouter(
     systemPrompt: options.systemPrompt || process.env.VOXA_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT,
     userPrompt: buildAnalysisPrompt(transcriptText, { ...options, modes })
   });
-  result.data = sanitizeAnalysisResult(result.data, transcriptText, modes);
+  result.data = sanitizeAnalysisResult(result.data, transcriptText, modes, options.selectedSpeakers);
   return result;
 }

@@ -6,6 +6,12 @@ export interface Recording {
   transcript?: { ready?: boolean } | null;
   playbackUrl?: string;
   sizeBytes?: number;
+  hasAudio?: boolean;
+}
+
+export interface TranscriptResult {
+  markdown: string;
+  speakers?: string[];
 }
 
 export interface PlatformCapabilities {
@@ -32,15 +38,17 @@ export interface AnalysisInput {
   modes?: string[];
   outputLanguage?: string;
   context?: string;
+  selectedSpeakers?: string[];
 }
 
 export interface VoxaPlatform {
   capabilities: PlatformCapabilities;
   listRecordings(): Promise<Recording[]>;
   saveRecording(input: SaveRecordingInput): Promise<Recording>;
+  importTranscript(input: { name: string; transcript: string }): Promise<Recording>;
   deleteRecording(id: string): Promise<void>;
   transcribe(input: { recordingId: string; maxQuality?: boolean }): Promise<{ markdown: string }>;
-  getTranscript(recordingId: string): Promise<{ markdown: string } | null>;
+  getTranscript(recordingId: string): Promise<TranscriptResult | null>;
   analyze(input: AnalysisInput): Promise<any>;
   getAnalysis(recordingId: string): Promise<any | null>;
   exportAnalysisPdf(input: { analysis: any; recording: Recording; locale: string }): Promise<{ canceled: boolean; filePath?: string }>;

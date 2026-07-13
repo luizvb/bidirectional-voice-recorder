@@ -133,6 +133,10 @@ export default function HistoryView({
   const [activeTab, setActiveTab] = useState<'transcript' | 'analysis'>('transcript');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [playbackSource, setPlaybackSource] = useState('');
+  const [audioStatus, setAudioStatus] = useState('');
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [isAutoProcessing, setIsAutoProcessing] = useState(false);
   const [autoProcessStep, setAutoProcessStep] = useState('');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -171,11 +175,6 @@ export default function HistoryView({
       setDetectedSpeakers([]);
       setSelectedSpeakers([]);
 
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = selected.playbackUrl || '';
-      }
-
       if (!selected.transcript) {
         setTranscriptData({ isTranscribing: false, status: t('history', 'noTranscript') });
         setAiData({ isAnalyzing: false, status: t('history', 'transcriptRequired') });
@@ -204,6 +203,57 @@ export default function HistoryView({
 
     loadSelectedRecording();
   }, [selectedId, selected?.transcript, selected?.playbackUrl, t]);
+
+  useEffect(() => {
+    let disposed = false;
+    let revokeSource: () => void = () => {};
+    const audio = audioRef.current;
+
+    audio?.pause();
+    audio?.removeAttribute('src');
+    audio?.load();
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setAudioDuration(0);
+    setPlaybackSource('');
+    setAudioStatus('');
+
+    if (!selected || selected.hasAudio === false) return () => undefined;
+
+    async function loadAudio() {
+      setIsAudioLoading(true);
+      setAudioStatus(t('history', 'audioLoading'));
+      try {
+        const source = platform.loadRecordingMedia
+          ? await platform.loadRecordingMedia(selected!)
+          : {
+              url: selected!.playbackUrl || '',
+              revoke: () => undefined,
+            };
+        if (!source.url) throw new Error(t('history', 'audioFailed'));
+        if (disposed) {
+          source.revoke();
+          return;
+        }
+        revokeSource = source.revoke;
+        setPlaybackSource(source.url);
+        setAudioStatus('');
+      } catch (error: unknown) {
+        if (!disposed) setAudioStatus(error instanceof Error ? error.message : t('history', 'audioFailed'));
+      } finally {
+        if (!disposed) setIsAudioLoading(false);
+      }
+    }
+
+    void loadAudio();
+    return () => {
+      disposed = true;
+      audio?.pause();
+      audio?.removeAttribute('src');
+      audio?.load();
+      revokeSource();
+    };
+  }, [selected?.hasAudio, selected?.id, selected?.playbackUrl, t]);
 
   useEffect(() => {
     async function runAutoProcess() {
@@ -235,11 +285,20 @@ export default function HistoryView({
     runAutoProcess();
   }, [analysisModes, autoProcess, loadRecordings, locale, selected, t]);
 
-  const togglePlay = () => {
-    if (!audioRef.current || !selected) return;
-    if (isPlaying) audioRef.current.pause();
-    else audioRef.current.play().catch(() => undefined);
-    setIsPlaying((value) => !value);
+  const togglePlay = async () => {
+    const audio = audioRef.current;
+    if (!audio || !selected || isAudioLoading || !playbackSource) return;
+    if (!audio.paused) {
+      audio.pause();
+      return;
+    }
+    try {
+      await audio.play();
+      setAudioStatus('');
+    } catch (error: unknown) {
+      setIsPlaying(false);
+      setAudioStatus(error instanceof Error ? error.message : t('history', 'audioFailed'));
+    }
   };
 
   const handleTranscribe = async () => {
@@ -418,15 +477,24 @@ export default function HistoryView({
     );
   }
 
-  const durationSeconds = Math.max(0, selected.durationMs / 1000);
+  const durationSeconds = audioDuration > 0 ? audioDuration : Math.max(0, selected.durationMs / 1000);
   const progress = durationSeconds ? Math.min(100, (currentTime / durationSeconds) * 100) : 0;
 
   return (
     <main className="detail-view">
       <audio
         ref={audioRef}
-        src={selected.playbackUrl}
+        src={playbackSource || undefined}
+        preload="metadata"
+        onCanPlay={() => setAudioStatus('')}
         onEnded={() => setIsPlaying(false)}
+        onError={() => playbackSource && setAudioStatus(t('history', 'audioFailed'))}
+        onLoadedMetadata={() => {
+          const duration = audioRef.current?.duration;
+          if (duration && Number.isFinite(duration)) setAudioDuration(duration);
+        }}
+        onPause={() => setIsPlaying(false)}
+        onPlay={() => setIsPlaying(true)}
         onTimeUpdate={() => audioRef.current && setCurrentTime(audioRef.current.currentTime)}
       />
 
@@ -446,12 +514,13 @@ export default function HistoryView({
       </header>
 
       {selected.hasAudio !== false && <section className="audio-player">
-        <button type="button" className="player-button" onClick={togglePlay} aria-label={isPlaying ? t('history', 'pauseAudio') : t('history', 'playAudio')}>
-          {isPlaying ? <Pause /> : <Play />}
+        <button type="button" className="player-button" onClick={() => void togglePlay()} disabled={isAudioLoading || !playbackSource} aria-label={isPlaying ? t('history', 'pauseAudio') : t('history', 'playAudio')}>
+          {isAudioLoading ? <Loader2 className="spin" /> : isPlaying ? <Pause /> : <Play />}
         </button>
         <div className="player-track">
-          <div className="player-times"><time>{formatDuration(currentTime * 1000)}</time><time>{formatDuration(selected.durationMs)}</time></div>
+          <div className="player-times"><time>{formatDuration(currentTime * 1000)}</time><time>{formatDuration(durationSeconds * 1000)}</time></div>
           <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
+          {audioStatus && <p className="audio-player-status" role="status">{audioStatus}</p>}
         </div>
       </section>}
 

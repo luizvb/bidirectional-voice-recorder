@@ -2,22 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AudioLines,
-  BriefcaseBusiness,
   Check,
   ChevronDown,
   Clock3,
   FileAudio,
   FileText,
   Keyboard,
-  Languages,
   Mic,
   Pause,
   Play,
   Radio,
   RefreshCw,
+  ScreenShare,
   Settings2,
   Square,
-  Users,
 } from 'lucide-react';
 import type { LibraryStatus } from '../App';
 import { platform, type Recording } from '../platform';
@@ -34,20 +32,6 @@ interface DashboardProps {
 }
 
 type ShortcutSettings = { record: string; options: string[] };
-type AnalysisMode = 'interview' | 'language' | 'meeting';
-
-const analysisModeIcons = { interview: BriefcaseBusiness, language: Languages, meeting: Users };
-
-function getSavedAnalysisModes(): AnalysisMode[] {
-  try {
-    const value = JSON.parse(localStorage.getItem('voxa_analysis_modes') || '[]');
-    const modes = Array.isArray(value) ? value.filter((item): item is AnalysisMode => ['interview', 'language', 'meeting'].includes(item)) : [];
-    return modes.length > 0 ? modes : ['language'];
-  } catch {
-    return ['language'];
-  }
-}
-
 const shortcutLabels: Record<string, string> = {
   'Option+Space': 'Option + Space',
   'CommandOrControl+Shift+Space': 'Command + Shift + Space',
@@ -74,6 +58,7 @@ export default function Dashboard({
     isRecording,
     isPaused,
     status,
+    captureMode,
     formattedTime,
     sessionName,
     setSessionName,
@@ -90,7 +75,6 @@ export default function Dashboard({
   const [isShortcutPanelOpen, setIsShortcutPanelOpen] = useState(false);
   const [shortcutStatus, setShortcutStatus] = useState('');
   const [micStatus, setMicStatus] = useState('');
-  const [analysisModes, setAnalysisModes] = useState<AnalysisMode[]>(getSavedAnalysisModes);
 
   const currentShortcut = shortcutLabels[shortcutSettings.record] || shortcutSettings.record;
   const recentRecordings = useMemo(
@@ -173,15 +157,6 @@ export default function Dashboard({
     }
   };
 
-  const toggleAnalysisMode = (mode: AnalysisMode) => {
-    setAnalysisModes((current) => {
-      const next = current.includes(mode) ? current.filter((item) => item !== mode) : [...current, mode];
-      const safeNext = next.length > 0 ? next : current;
-      localStorage.setItem('voxa_analysis_modes', JSON.stringify(safeNext));
-      return safeNext;
-    });
-  };
-
   return (
     <main className="workspace-view">
       <section className="workspace-intro">
@@ -254,34 +229,47 @@ export default function Dashboard({
           </label>
 
           <p className="recorder-description">
-            {phase === 'error' ? status : isRecording ? t('recorder', 'recordingDescription') : t('recorder', 'idleDescription')}
+            {phase === 'error'
+              ? status
+              : isRecording
+                ? captureMode === 'shared' ? t('recorder', 'recordingDescriptionShared') : t('recorder', 'recordingDescriptionMicrophone')
+                : platform.capabilities.kind === 'web' ? t('recorder', 'idleDescriptionWeb') : t('recorder', 'idleDescription')}
           </p>
-          {!isRecording && (
-            <div className="recorder-analysis-modes">
-              <span>{t('recorder', 'analyzeAs')}</span>
-              <div>
-                {(Object.keys(analysisModeIcons) as AnalysisMode[]).map((mode) => {
-                  const Icon = analysisModeIcons[mode];
-                  const selectedMode = analysisModes.includes(mode);
-                  return <button key={mode} type="button" className={selectedMode ? 'is-selected' : ''} aria-pressed={selectedMode} onClick={() => toggleAnalysisMode(mode)}><Icon />{t('analysisModes', mode)}{selectedMode && <Check />}</button>;
-                })}
-              </div>
-            </div>
-          )}
           {micStatus && <p className="inline-notice">{micStatus}</p>}
 
-          <div className="recorder-actions">
-            {!isRecording ? (
+          {!isRecording && platform.capabilities.kind === 'web' ? (
+            <div className="capture-choice-grid" aria-label={t('recorder', 'captureSource')}>
               <button
                 type="button"
-                className="button button-primary recorder-primary"
-                onClick={() => startRecording()}
+                className="capture-choice is-primary"
+                onClick={() => startRecording({ captureMode: 'microphone' })}
                 data-keyboard-primary="true"
               >
-                <Mic />
-                {t('recorder', 'start')}
+                <span className="capture-choice-icon"><Mic /></span>
+                <span><strong>{t('recorder', 'recordComputerAudio')}</strong><small>{t('recorder', 'recordComputerAudioDescription')}</small></span>
               </button>
-            ) : (
+              <button
+                type="button"
+                className="capture-choice"
+                onClick={() => startRecording({ captureMode: 'shared' })}
+              >
+                <span className="capture-choice-icon"><ScreenShare /></span>
+                <span><strong>{t('recorder', 'shareTabOrScreen')}</strong><small>{t('recorder', 'shareTabOrScreenDescription')}</small></span>
+              </button>
+            </div>
+          ) : (
+            <div className="recorder-actions">
+              {!isRecording ? (
+                <button
+                  type="button"
+                  className="button button-primary recorder-primary"
+                  onClick={() => startRecording()}
+                  data-keyboard-primary="true"
+                >
+                  <Mic />
+                  {t('recorder', 'start')}
+                </button>
+              ) : (
               <>
                 <button
                   type="button"
@@ -301,9 +289,10 @@ export default function Dashboard({
                   {t('recorder', 'stop')}
                 </button>
               </>
-            )}
-            {platform.capabilities.globalShortcuts && <span className="shortcut-hint">{t('recorder', 'shortcut')}: {currentShortcut}</span>}
-          </div>
+              )}
+              {platform.capabilities.globalShortcuts && <span className="shortcut-hint">{t('recorder', 'shortcut')}: {currentShortcut}</span>}
+            </div>
+          )}
         </div>
 
         <aside className="signal-panel" aria-label={t('recorder', 'signalMonitor')}>
@@ -317,7 +306,7 @@ export default function Dashboard({
             ))}
           </div>
           <dl className="signal-details">
-            <div><dt>{t('recorder', 'input')}</dt><dd>{t('recorder', 'micAndSystem')}</dd></div>
+            <div><dt>{t('recorder', 'input')}</dt><dd>{captureMode === 'shared' ? t('recorder', 'inputShared') : t('recorder', 'inputMicrophone')}</dd></div>
             <div><dt>{t('recorder', 'saveMode')}</dt><dd>{t('recorder', 'localFirst')}</dd></div>
           </dl>
         </aside>

@@ -7,6 +7,16 @@ declare global {
   }
 }
 
+export type CaptureMode = 'microphone' | 'shared';
+
+type DisplayCaptureOptions = DisplayMediaStreamOptions & {
+  preferCurrentTab?: boolean;
+  selfBrowserSurface?: 'include' | 'exclude';
+  surfaceSwitching?: 'include' | 'exclude';
+  systemAudio?: 'include' | 'exclude';
+  windowAudio?: 'exclude' | 'system' | 'window';
+};
+
 export function useRecorder() {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -15,6 +25,7 @@ export function useRecorder() {
   
   const [status, setStatus] = useState('Ready');
   const [sessionName, setSessionName] = useState('Voxa Session');
+  const [captureMode, setCaptureMode] = useState<CaptureMode>(platform.capabilities.kind === 'electron' ? 'shared' : 'microphone');
   
   // Timer state
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -24,6 +35,7 @@ export function useRecorder() {
   const chunksRef = useRef<Blob[]>([]);
   const streamsRef = useRef<MediaStream[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const activeCaptureModeRef = useRef<CaptureMode>(captureMode);
   
   // Time tracking
   const startedAtRef = useRef<number>(0);
@@ -55,15 +67,50 @@ export function useRecorder() {
     return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || '';
   };
 
-  const createCaptureStream = async () => {
-    audioContextRef.current = new window.AudioContext();
-    const destination = audioContextRef.current.createMediaStreamDestination();
+  const createCaptureStream = async (mode: CaptureMode) => {
     const warnings: string[] = [];
-
     let mic: MediaStream | null = null;
-    let system: MediaStream | null = null;
+    let shared: MediaStream | null = null;
 
-    try {
+    if (!navigator.mediaDevices) throw new Error('Audio capture is not supported in this browser.');
+
+    if (mode === 'shared') {
+      if (!platform.capabilities.systemAudio || !navigator.mediaDevices.getDisplayMedia) {
+        throw new Error('Tab and screen audio sharing is not supported in this browser.');
+      }
+
+      try {
+        const options: DisplayCaptureOptions = {
+          audio: { suppressLocalAudioPlayback: false } as MediaTrackConstraints,
+          video: true,
+          preferCurrentTab: false,
+          selfBrowserSurface: 'exclude',
+          surfaceSwitching: 'include',
+          systemAudio: 'include',
+          windowAudio: 'system',
+        };
+        // getDisplayMedia must be the first permission awaited after the user's click.
+        shared = await navigator.mediaDevices.getDisplayMedia(options);
+        streamsRef.current.push(shared);
+        shared.getVideoTracks().forEach((track) => track.stop());
+        if (shared.getAudioTracks().length === 0) {
+          throw new Error('The selected tab or screen did not share audio. Enable “Share audio” and try again.');
+        }
+      } catch (error: unknown) {
+        const captureError = error as DOMException;
+        if (captureError?.name === 'NotAllowedError') throw new Error('Tab or screen sharing was canceled.');
+        throw error;
+      }
+
+      try {
+        mic = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+        streamsRef.current.push(mic);
+      } catch {
+        warnings.push('Microphone permission was not granted. Recording shared audio only.');
+      }
+    } else {
       mic = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -71,39 +118,22 @@ export function useRecorder() {
         }
       });
       streamsRef.current.push(mic);
-    } catch (e: any) {
-      throw new Error(`Microphone permission denied: ${e.message}`);
     }
 
-    try {
-      if (!platform.capabilities.systemAudio) {
-        warnings.push('Shared tab audio is not supported in this browser. Recording microphone only.');
-      } else system = await navigator.mediaDevices.getDisplayMedia({
-        audio: true,
-        video: true // Video track is required by spec, we will drop it
-      });
-      if (system) {
-        system.getVideoTracks().forEach(track => track.stop());
-        streamsRef.current.push(system);
-        if (system.getAudioTracks().length === 0) warnings.push('The shared source did not provide audio. Recording microphone only.');
-      }
-    } catch (e: any) {
-      warnings.push(e?.name === 'NotAllowedError'
-        ? 'Tab or screen sharing was canceled. Recording microphone only.'
-        : 'Shared audio could not be captured. Recording microphone only.');
+    audioContextRef.current = new window.AudioContext();
+    const destination = audioContextRef.current.createMediaStreamDestination();
+
+    if (mic && shared) {
+      // Preserve the known microphone and shared source on separate channels.
+      const merger = audioContextRef.current.createChannelMerger(2);
+      audioContextRef.current.createMediaStreamSource(mic).connect(merger, 0, 0);
+      audioContextRef.current.createMediaStreamSource(shared).connect(merger, 0, 1);
+      merger.connect(destination);
+    } else {
+      const onlySource = mic || shared;
+      if (!onlySource) throw new Error('No audio source is available.');
+      audioContextRef.current.createMediaStreamSource(onlySource).connect(destination);
     }
-
-    // Merge into stereo channels (Mic = Left, System = Right)
-    const merger = audioContextRef.current.createChannelMerger(2);
-    const micSource = audioContextRef.current.createMediaStreamSource(mic);
-    micSource.connect(merger, 0, 0);
-
-    if (system && system.getAudioTracks().length > 0) {
-      const systemSource = audioContextRef.current.createMediaStreamSource(system);
-      systemSource.connect(merger, 0, 1);
-    }
-
-    merger.connect(destination);
 
     if (audioContextRef.current.state === 'suspended') {
       await audioContextRef.current.resume();
@@ -126,7 +156,10 @@ export function useRecorder() {
     }
   };
 
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (options: { captureMode?: CaptureMode } = {}) => {
+    const nextCaptureMode = options.captureMode || (platform.capabilities.kind === 'electron' ? 'shared' : 'microphone');
+    activeCaptureModeRef.current = nextCaptureMode;
+    setCaptureMode(nextCaptureMode);
     setStatus('Preparing recording permissions...');
     
     // Clear previous review
@@ -136,7 +169,7 @@ export function useRecorder() {
 
     try {
       chunksRef.current = [];
-      const capture = await createCaptureStream();
+      const capture = await createCaptureStream(nextCaptureMode);
       const mimeType = preferredMimeType();
       
       mediaRecorderRef.current = new MediaRecorder(capture.stream, mimeType ? { mimeType } : undefined);
@@ -149,7 +182,9 @@ export function useRecorder() {
       
       setIsRecording(true);
       setIsPaused(false);
-      setStatus(capture.warnings.length > 0 ? capture.warnings.join(' ') : 'Recording microphone...');
+      setStatus(capture.warnings.length > 0
+        ? capture.warnings.join(' ')
+        : nextCaptureMode === 'shared' ? 'Recording microphone and shared audio...' : 'Recording computer microphone...');
       
       totalElapsedBeforePauseRef.current = 0;
       setElapsedMs(0);
@@ -214,7 +249,7 @@ export function useRecorder() {
           const saved = await platform.saveRecording({
             name: sessionName || 'Untitled recording',
             durationMs,
-            mode: 'mic',
+            mode: activeCaptureModeRef.current === 'shared' ? 'shared' : 'mic',
             mimeType: blob.type || 'audio/webm',
             extension: 'webm',
             bytes
@@ -239,7 +274,7 @@ export function useRecorder() {
       await platform.saveRecording({
         name: sessionName || 'Untitled recording',
         durationMs: reviewBlob.durationMs,
-        mode: 'mic',
+        mode: activeCaptureModeRef.current === 'shared' ? 'shared' : 'mic',
         mimeType: reviewBlob.blob.type || 'audio/webm',
         extension: 'webm',
         bytes
@@ -279,6 +314,7 @@ export function useRecorder() {
     isReviewing,
     reviewBlob,
     status,
+    captureMode,
     sessionName,
     setSessionName,
     elapsedMs,

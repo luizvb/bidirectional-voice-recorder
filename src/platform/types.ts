@@ -9,6 +9,11 @@ export interface Recording {
   hasAudio?: boolean;
 }
 
+export interface RecordingMediaSource {
+  url: string;
+  revoke(): void;
+}
+
 export interface TranscriptResult {
   markdown: string;
   speakers?: string[];
@@ -52,6 +57,7 @@ export interface VoxaPlatform {
   analyze(input: AnalysisInput): Promise<any>;
   getAnalysis(recordingId: string): Promise<any | null>;
   exportAnalysisPdf(input: { analysis: any; recording: Recording; locale: string }): Promise<{ canceled: boolean; filePath?: string }>;
+  loadRecordingMedia?(recording: Recording): Promise<RecordingMediaSource>;
   subscribeToRecordingsChanged(callback: () => void): () => void;
   createCheckoutSession(): Promise<{ url: string | null }>;
   getShortcutSettings?(): Promise<{ record: string; options: string[] }>;

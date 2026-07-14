@@ -148,6 +148,35 @@ svg { width: 18px; height: 18px; stroke-width: 1.8; flex: 0 0 auto; }
 .toolbar-action { min-width: 142px; }
 .app-content { min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; padding: 24px; scrollbar-width: thin; scrollbar-color: #d1d1cb transparent; }
 .view-frame { min-height: 100%; }
+.billing-view { width: min(1080px, 100%); margin: 0 auto; display: grid; gap: 18px; }
+.billing-view-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 8px 0 4px; }
+.billing-view-head > div { min-width: 0; }
+.billing-view-head span, .billing-plan > div > span { color: var(--text-tertiary); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.billing-view-head h2 { margin: 7px 0 6px; font-size: clamp(30px, 4vw, 46px); letter-spacing: -.055em; }
+.billing-view-head p { max-width: 620px; margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.55; }
+.billing-state { display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 17px 19px; background: #fff; }
+.billing-state > div { min-width: 0; }
+.billing-state strong, .billing-state span { display: block; }
+.billing-state strong { font-size: 13px; }
+.billing-state span { margin-top: 5px; color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
+.billing-state.paid { border-color: #a8c7ac; background: #f0f7f1; }
+.billing-state.pending { border-color: #d8c18c; background: #fff8e6; }
+.billing-state.attention, .billing-error { border-color: #dfb1aa; background: #fff1ef; }
+.billing-error { display: flex; align-items: center; gap: 9px; border: 1px solid; border-radius: var(--radius); padding: 12px 14px; color: #7f332d; font-size: 12px; }
+.billing-plan { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(250px, .65fr); overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: #fff; }
+.billing-plan > div, .billing-plan > aside { padding: clamp(24px, 4vw, 40px); }
+.billing-plan h3 { max-width: 620px; margin: 12px 0 10px; font-size: clamp(24px, 3vw, 34px); line-height: 1.05; letter-spacing: -.045em; }
+.billing-plan p { max-width: 620px; margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
+.billing-plan ul { margin: 28px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; list-style: none; }
+.billing-plan li { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.45; }
+.billing-plan li svg { width: 16px; flex: none; color: #356c49; }
+.billing-plan aside { display: flex; flex-direction: column; justify-content: flex-end; border-left: 1px solid var(--line); background: var(--surface); }
+.billing-plan aside > span, .billing-plan aside > small { color: var(--text-tertiary); font-size: 11px; }
+.billing-plan aside > strong { margin: 7px 0 3px; font-size: 34px; letter-spacing: -.05em; }
+.billing-plan aside .button { width: 100%; margin-top: 24px; }
+.billing-plan aside .button + small { margin-top: 9px; line-height: 1.45; }
+.billing-skeleton { height: 110px; }
+.billing-skeleton-large { height: 360px; }
 .app-loading { display: flex; width: 100vw; height: 100vh; align-items: center; justify-content: center; gap: 12px; background: #ffffff; color: var(--text-secondary); font-size: 14px; }
 .app-loading-mark { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; background: #111111; color: #ffffff; font-weight: 750; }
 
@@ -953,6 +982,14 @@ svg { width: 18px; height: 18px; stroke-width: 1.8; flex: 0 0 auto; }
   .recorder-card { grid-template-columns: minmax(0, 1fr) 220px; }
   .library-list-header, .library-row { grid-template-columns: minmax(220px, 1fr) 92px 72px; }
   .library-list-header span:last-child, .library-row > .recording-state { display: none; }
+}
+
+@media (max-width: 767px) {
+  .billing-view-head, .billing-state { align-items: stretch; flex-direction: column; }
+  .billing-view-head .button, .billing-state .button { width: 100%; }
+  .billing-plan { grid-template-columns: 1fr; }
+  .billing-plan > aside { min-height: 220px; border-top: 1px solid var(--line); border-left: 0; }
+  .billing-plan ul { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 860px) {

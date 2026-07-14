@@ -54,6 +54,21 @@ export interface AnalysisInput {
   selectedSpeakers?: string[];
 }
 
+export interface BillingStatus {
+  configured: boolean;
+  planKey: string | null;
+  planLabel: string;
+  rawStatus: string;
+  normalizedState: 'free' | 'checkout_pending' | 'trialing' | 'active' | 'past_due_grace' | 'past_due_blocked' | 'cancel_scheduled' | 'paused' | 'canceled' | 'incomplete' | 'reconciliation_required';
+  paidAccess: boolean;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  graceUntil: string | null;
+  reconciliationRequired: boolean;
+  portalAvailable: boolean;
+}
+
 export interface VoxaPlatform {
   capabilities: PlatformCapabilities;
   listRecordings(): Promise<Recording[]>;
@@ -68,6 +83,9 @@ export interface VoxaPlatform {
   loadRecordingMedia?(recording: Recording): Promise<RecordingMediaSource>;
   subscribeToRecordingsChanged(callback: () => void): () => void;
   createCheckoutSession(): Promise<{ url: string | null }>;
+  getBillingStatus(): Promise<BillingStatus>;
+  createBillingPortalSession(): Promise<{ url: string | null }>;
+  openBillingUrl(url: string): Promise<void>;
   getShortcutSettings?(): Promise<{ record: string; options: string[] }>;
   setRecordShortcut?(shortcut: string): Promise<{ record: string; options: string[] }>;
   subscribeToShortcutRecord?(callback: () => void): () => void;

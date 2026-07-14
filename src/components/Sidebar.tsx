@@ -10,11 +10,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ArrowUpRight,
+  CreditCard,
 } from 'lucide-react';
 import type { AppView } from '../App';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../contexts/LanguageContext';
-import { platform } from '../platform';
 import { Logo } from './Logo';
 
 interface SidebarProps {
@@ -48,6 +48,7 @@ export default function Sidebar({ activeView, onViewChange, collapsed, showToggl
   const navItems = [
     { id: 'workspace' as const, icon: AudioLines, label: t('navigation', 'workspace') },
     { id: 'library' as const, icon: Library, label: t('navigation', 'library') },
+    { id: 'billing' as const, icon: CreditCard, label: 'Plan and billing' },
   ];
 
   const handleUpgrade = async () => {
@@ -56,16 +57,7 @@ export default function Sidebar({ activeView, onViewChange, collapsed, showToggl
       return;
     }
 
-    try {
-      const data = await platform.createCheckoutSession();
-      const electronWindow = window as unknown as Window & { electron?: { openExternal: (url: string) => void } };
-      if (data.url) {
-        if (electronWindow.electron) electronWindow.electron.openExternal(data.url);
-        else window.open(data.url, '_blank');
-      }
-    } catch (error) {
-      console.error('Failed to create checkout session:', error);
-    }
+    onViewChange('billing');
   };
 
   return (

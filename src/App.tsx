@@ -9,12 +9,13 @@ import Login from './components/Login';
 import MiniWidget from './components/MiniWidget';
 import Onboarding from './components/Onboarding';
 import Sidebar from './components/Sidebar';
+import BillingView from './components/BillingView';
 import { useAuth } from './hooks/useAuth';
 import { useKeyboardActions } from './hooks/useKeyboardActions';
 import { useLanguage } from './contexts/LanguageContext';
 import { platform, type Recording } from './platform';
 
-export type AppView = 'workspace' | 'library';
+export type AppView = 'workspace' | 'library' | 'billing';
 export type LibraryStatus = 'idle' | 'loading' | 'ready' | 'error';
 const EvalsLab = import.meta.env.DEV ? lazy(() => import('./components/EvalsLab')) : null;
 const InsightsPreview = import.meta.env.DEV ? lazy(() => import('./components/InsightsPreview')) : null;
@@ -72,6 +73,7 @@ export default function App() {
   useEffect(() => {
     setIsWidget(window.location.hash === '#/widget');
     setShowOnboarding(!localStorage.getItem('voxa_has_seen_onboarding'));
+    if (new URLSearchParams(window.location.search).has('checkout') || new URLSearchParams(window.location.search).has('billing')) setActiveView('billing');
 
     const query = window.matchMedia('(max-width: 959px)');
     const syncCompactMode = () => setIsCompact(query.matches);
@@ -159,6 +161,8 @@ export default function App() {
 
   const pageTitle = activeView === 'workspace'
     ? t('navigation', 'workspace')
+    : activeView === 'billing'
+      ? 'Plan and billing'
     : selectedRecordingId
       ? t('navigation', 'conversation')
       : t('navigation', 'library');
@@ -271,6 +275,10 @@ export default function App() {
                   onSelectRecording={handleSelectRecording}
                   onRecordingComplete={handleRecordingComplete}
                 />
+              </motion.div>
+            ) : activeView === 'billing' ? (
+              <motion.div key="billing" className="view-frame" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.14 }}>
+                <BillingView />
               </motion.div>
             ) : (
               <motion.div

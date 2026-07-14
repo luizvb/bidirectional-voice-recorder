@@ -1,6 +1,6 @@
 import { upload } from '@vercel/blob/client';
 import { getAuthCredentials, getAuthToken } from './auth-token';
-import type { AnalysisInput, Recording, RecordingMediaSource, SaveRecordingInput, TranscriptionInput, VoxaPlatform } from './types';
+import type { AnalysisInput, BillingStatus, Recording, RecordingMediaSource, SaveRecordingInput, TranscriptionInput, VoxaPlatform } from './types';
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
@@ -84,6 +84,9 @@ export class WebPlatform implements VoxaPlatform {
   analyze(input: AnalysisInput) { return request<any>(`/api/recordings/${encodeURIComponent(input.recordingId)}/analyze`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }); }
   getAnalysis(id: string) { return request<any | null>(`/api/recordings/${encodeURIComponent(id)}/analysis`); }
   createCheckoutSession() { return request<{ url: string | null }>('/api/stripe/create-checkout-session', { method: 'POST', headers: { 'Content-Type': 'application/json' } }); }
+  getBillingStatus() { return request<BillingStatus>('/api/stripe/status'); }
+  createBillingPortalSession() { return request<{ url: string | null }>('/api/stripe/portal', { method: 'POST', headers: { 'Content-Type': 'application/json' } }); }
+  async openBillingUrl(url: string) { window.location.assign(url); }
   async exportAnalysisPdf(input: { analysis: any; recording: Recording; locale: string }) {
     const { downloadAnalysisPdf } = await import('../lib/browser-pdf');
     const filePath = await downloadAnalysisPdf(input);

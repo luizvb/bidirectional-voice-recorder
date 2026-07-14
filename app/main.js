@@ -27,6 +27,7 @@ let recordShortcut = DEFAULT_RECORD_SHORTCUT;
 let registeredRecordShortcut = null;
 const { spawnFile } = require('./sidecar');
 const { buildAnalysisReportHtml } = require('./report-export');
+const { parseStripeExternalUrl } = require('./stripe-external-url');
 const API_URL = resolveApiUrl();
 const API_TIMEOUT_MS = 20_000;
 const { pathToFileURL } = require('node:url');
@@ -436,6 +437,32 @@ ipcMain.handle('stripe:create-checkout-session', async (_event, input) => {
   });
   if (!response.ok) throw new Error((await response.text()) || 'Could not start checkout');
   return response.json();
+});
+
+ipcMain.handle('stripe:get-status', async (_event, input) => {
+  const response = await fetchApi('/api/stripe/status', {
+    headers: { Authorization: `Bearer ${input.authToken || ''}` }
+  });
+  if (!response.ok) throw new Error((await response.text()) || 'Could not load billing status');
+  return response.json();
+});
+
+ipcMain.handle('stripe:create-portal-session', async (_event, input) => {
+  const response = await fetchApi('/api/stripe/portal', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${input.authToken || ''}`
+    }
+  });
+  if (!response.ok) throw new Error((await response.text()) || 'Could not open billing portal');
+  return response.json();
+});
+
+ipcMain.handle('stripe:open-external-url', async (_event, value) => {
+  const url = parseStripeExternalUrl(value);
+  await shell.openExternal(url);
+  return true;
 });
 
 ipcMain.handle('reports:analysis-pdf', async (_event, input) => {

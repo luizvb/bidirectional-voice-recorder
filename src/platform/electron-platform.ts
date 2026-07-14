@@ -16,6 +16,9 @@ export class ElectronPlatform implements VoxaPlatform {
   async getAnalysis(recordingId: string) { return window.recorder.getAnalysis(recordingId, await this.auth()); }
   async exportAnalysisPdf(input: any) { return window.recorder.exportAnalysisPdf(input); }
   async createCheckoutSession() { return window.recorder.createCheckoutSession(await this.auth()); }
+  async getBillingStatus() { return window.recorder.getBillingStatus(await this.auth()); }
+  async createBillingPortalSession() { return window.recorder.createBillingPortalSession(await this.auth()); }
+  async openBillingUrl(url: string) { await window.recorder.openStripeExternalUrl(url); }
   subscribeToRecordingsChanged(callback: () => void) {
     window.addEventListener('recordings:changed', callback);
     return () => window.removeEventListener('recordings:changed', callback);

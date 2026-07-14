@@ -13,6 +13,7 @@ import {
   transcribeRecording,
   uploadRecording
 } from '../controllers/recordings';
+import { requireVoxaPro } from '../billing/entitlement';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -24,10 +25,10 @@ router.post('/upload', createRecordingUploadToken);
 router.post('/import-transcript', importTranscript);
 router.post('/', upload.single('audio'), uploadRecording);
 router.get('/', listRecordings);
-router.post('/:id/transcribe', transcribeRecording);
+router.post('/:id/transcribe', requireVoxaPro, transcribeRecording);
 router.get('/:id/status', getRecordingStatus);
 router.get('/:id/media', streamRecording);
-router.post('/:id/analyze', analyzeRecording);
+router.post('/:id/analyze', requireVoxaPro, analyzeRecording);
 router.get('/:id/transcript', getTranscript);
 router.get('/:id/analysis', getAnalysis);
 router.delete('/:id', deleteRecording);

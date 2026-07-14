@@ -18,6 +18,16 @@ function subscriptionPeriod(subscription: Stripe.Subscription) {
   };
 }
 
+export function stripeSubscriptionCancellationScheduled(
+  subscription: Pick<Stripe.Subscription, 'cancel_at_period_end' | 'cancel_at'>,
+  providerCreatedAt: number,
+) {
+  return subscription.cancel_at_period_end === true
+    || (typeof subscription.cancel_at === 'number'
+      && Number.isFinite(subscription.cancel_at)
+      && subscription.cancel_at > providerCreatedAt);
+}
+
 export function voxaSubscriptionSnapshot(subscription: Stripe.Subscription, providerCreatedAt: number, graceDays = 3): VoxaBillingSnapshot {
   const period = subscriptionPeriod(subscription);
   const status = subscription.status;
@@ -25,7 +35,7 @@ export function voxaSubscriptionSnapshot(subscription: Stripe.Subscription, prov
     status,
     periodStart: period.start ? new Date(period.start * 1_000) : null,
     periodEnd: period.end ? new Date(period.end * 1_000) : null,
-    cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
+    cancelAtPeriodEnd: stripeSubscriptionCancellationScheduled(subscription, providerCreatedAt),
     graceUntil: status === 'past_due' ? new Date(providerCreatedAt * 1_000 + graceDays * 86_400_000) : null,
     providerUpdatedAt: new Date(providerCreatedAt * 1_000),
   };
@@ -57,4 +67,3 @@ export function subscriptionIdFromVoxaInvoice(invoice: Stripe.Invoice) {
   const subscription = value.parent?.subscription_details?.subscription ?? value.subscription;
   return typeof subscription === 'string' ? subscription : subscription?.id;
 }
-

@@ -5,6 +5,7 @@ import db, { query } from '../config/db';
 import { requireAuth } from '../middleware/auth';
 import { assertVoxaPrice, assertVoxaSubscriptionPrice, BillingConfigurationError, voxaCheckoutEventAction, voxaStripeConfig } from '../billing/stripe-config';
 import { subscriptionIdFromVoxaInvoice, voxaNormalizedBillingState, voxaPaidAccess, voxaSubscriptionSnapshot } from '../billing/lifecycle';
+import { firstVoxaCommercialPlan } from '../billing/catalog';
 
 const router = express.Router();
 
@@ -42,10 +43,12 @@ router.get('/status', requireAuth, async (req: Request, res: Response): Promise<
     if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
     let configured = true;
     try { voxaStripeConfig(); } catch { configured = false; }
+    const firstPlan = firstVoxaCommercialPlan();
     const result = await query(
       `SELECT subscription_status, subscription_period_start, subscription_period_end,
               subscription_cancel_at_period_end, subscription_grace_until,
               billing_reconciliation_required, checkout_pending_until,
+              trial_plan_key, trial_started_at, trial_ends_at,
               stripe_customer_id IS NOT NULL AS portal_available
        FROM users WHERE id = $1`,
       [userId],
@@ -57,11 +60,14 @@ router.get('/status', requireAuth, async (req: Request, res: Response): Promise<
       graceUntil: row.subscription_grace_until,
       checkoutPendingUntil: row.checkout_pending_until,
       reconciliationRequired: row.billing_reconciliation_required,
+      trialPlanKey: row.trial_plan_key,
+      trialStartedAt: row.trial_started_at,
+      trialEndsAt: row.trial_ends_at,
     });
     res.json({
       configured,
-      planKey: normalizedState === 'free' || normalizedState === 'canceled' ? null : 'voxa_pro',
-      planLabel: 'Voxa Pro',
+      planKey: normalizedState === 'free' || normalizedState === 'canceled' ? null : (row.trial_plan_key ?? firstPlan.key),
+      planLabel: firstPlan.label,
       rawStatus: row.subscription_status ?? 'inactive',
       normalizedState,
       paidAccess: voxaPaidAccess(normalizedState),
@@ -69,6 +75,9 @@ router.get('/status', requireAuth, async (req: Request, res: Response): Promise<
       currentPeriodEnd: row.subscription_period_end ?? null,
       cancelAtPeriodEnd: Boolean(row.subscription_cancel_at_period_end),
       graceUntil: row.subscription_grace_until ?? null,
+      trialStartedAt: row.trial_started_at ?? null,
+      trialEndsAt: row.trial_ends_at ?? null,
+      checkoutRequired: ['trial_expired', 'free', 'canceled', 'past_due_blocked', 'incomplete'].includes(normalizedState),
       reconciliationRequired: Boolean(row.billing_reconciliation_required),
       portalAvailable: Boolean(row.portal_available),
     });

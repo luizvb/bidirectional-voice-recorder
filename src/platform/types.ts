@@ -59,12 +59,15 @@ export interface BillingStatus {
   planKey: string | null;
   planLabel: string;
   rawStatus: string;
-  normalizedState: 'free' | 'checkout_pending' | 'trialing' | 'active' | 'past_due_grace' | 'past_due_blocked' | 'cancel_scheduled' | 'paused' | 'canceled' | 'incomplete' | 'reconciliation_required';
+  normalizedState: 'free' | 'checkout_pending' | 'trial_active' | 'trial_expired' | 'trialing' | 'active' | 'past_due_grace' | 'past_due_blocked' | 'cancel_scheduled' | 'paused' | 'canceled' | 'incomplete' | 'reconciliation_required';
   paidAccess: boolean;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   graceUntil: string | null;
+  trialStartedAt: string | null;
+  trialEndsAt: string | null;
+  checkoutRequired: boolean;
   reconciliationRequired: boolean;
   portalAvailable: boolean;
 }

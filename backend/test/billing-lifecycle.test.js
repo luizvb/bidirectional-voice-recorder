@@ -14,6 +14,29 @@ test('Voxa normalizes paid, renewal, recovery and cancellation states', () => {
   assert.equal(voxaPaidAccess('past_due_blocked'), false);
 });
 
+test('Voxa grants the local no-card trial for exactly seven days and blocks it at expiry', () => {
+  const trial = {
+    status: 'inactive',
+    trialPlanKey: 'voxa_pro',
+    trialStartedAt: '2026-07-14T12:00:00Z',
+    trialEndsAt: '2026-07-21T12:00:00Z',
+  };
+  assert.equal(voxaNormalizedBillingState(trial, new Date('2026-07-14T12:00:00Z')), 'trial_active');
+  assert.equal(voxaNormalizedBillingState({ ...trial, checkoutPendingUntil: '2026-07-14T13:00:00Z' }, new Date('2026-07-14T12:30:00Z')), 'trial_active');
+  assert.equal(voxaPaidAccess(voxaNormalizedBillingState(trial, new Date('2026-07-21T11:59:59.999Z'))), true);
+  assert.equal(voxaNormalizedBillingState(trial, new Date('2026-07-21T12:00:00Z')), 'trial_expired');
+  assert.equal(voxaPaidAccess('trial_expired'), false);
+  assert.equal(voxaNormalizedBillingState({ ...trial, trialPlanKey: 'unapproved_plan' }, new Date('2026-07-15T12:00:00Z')), 'free');
+});
+
+test('Stripe lifecycle remains authoritative after a trial user subscribes', () => {
+  const trial = { trialPlanKey: 'voxa_pro', trialStartedAt: '2026-07-14T12:00:00Z', trialEndsAt: '2026-07-21T12:00:00Z' };
+  const now = new Date('2026-07-15T12:00:00Z');
+  assert.equal(voxaNormalizedBillingState({ ...trial, status: 'active' }, now), 'active');
+  assert.equal(voxaNormalizedBillingState({ ...trial, status: 'past_due' }, now), 'past_due_blocked');
+  assert.equal(voxaNormalizedBillingState({ ...trial, status: 'canceled' }, now), 'canceled');
+});
+
 test('Voxa snapshots item periods and scheduled cancellation from canonical subscription data', () => {
   const subscription = {
     status: 'active', cancel_at_period_end: true,

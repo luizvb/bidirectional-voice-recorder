@@ -23,3 +23,16 @@ test('billing migration is serialized, transactional and verified before Vercel 
   assert.equal(manifest.scripts['db:migrate'], 'node scripts/migrate.mjs');
   assert.match(manifest.scripts['vercel-build'], /db:check/);
 });
+
+test('automatic trial migration is additive, exact and does not backfill existing users', () => {
+  const migration = readFileSync('migrations/20260715_automatic_trials.sql', 'utf8');
+  const schema = readFileSync('scripts/billing-schema.mjs', 'utf8');
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS trial_plan_key/i);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS trial_started_at/i);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS trial_ends_at/i);
+  assert.match(migration, /trial_ends_at\s*=\s*trial_started_at\s*\+\s*INTERVAL '7 days'/i);
+  assert.doesNotMatch(migration, /UPDATE\s+users/i);
+  assert.match(schema, /'trial_plan_key'/);
+  assert.match(schema, /'trial_started_at'/);
+  assert.match(schema, /'trial_ends_at'/);
+});

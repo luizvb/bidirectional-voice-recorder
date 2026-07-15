@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { provisionVoxaAccount } from '../billing/trial';
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | undefined;
 
@@ -23,9 +24,17 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const { payload } = await jwtVerify(header.slice(7), getJwks());
     if (!payload.sub) throw new Error('Token subject is missing.');
     req.user = { id: payload.sub };
-    next();
   } catch (error) {
     console.warn('Rejected authentication token:', error instanceof Error ? error.message : error);
     res.status(401).json({ error: 'Invalid or expired session.' });
+    return;
+  }
+
+  try {
+    await provisionVoxaAccount(req.user!.id);
+    next();
+  } catch (error) {
+    console.error('Could not provision authenticated Voxa account', { code: String((error as { code?: unknown })?.code ?? 'DATABASE_ERROR').slice(0, 20) });
+    res.status(503).json({ error: 'Account access is temporarily unavailable.', code: 'ACCOUNT_PROVISIONING_UNAVAILABLE' });
   }
 }

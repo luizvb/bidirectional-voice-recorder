@@ -8,6 +8,9 @@ export const REQUIRED_BILLING_COLUMNS = [
   'billing_reconciliation_required',
   'checkout_pending_until',
   'checkout_pending_token',
+  'trial_plan_key',
+  'trial_started_at',
+  'trial_ends_at',
 ];
 
 export async function missingBillingSchema(client) {

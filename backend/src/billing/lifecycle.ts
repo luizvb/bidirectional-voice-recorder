@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { firstVoxaCommercialPlan } from './catalog';
 
 export type VoxaBillingSnapshot = {
   status: string;
@@ -48,18 +49,27 @@ export function shouldApplyVoxaSubscriptionSnapshot(existing: Pick<VoxaBillingSn
   return !( ['active', 'trialing'].includes(existing.status) && ['past_due', 'unpaid'].includes(incoming.status) );
 }
 
-export function voxaNormalizedBillingState(input?: { status?: string | null; cancelAtPeriodEnd?: boolean | null; graceUntil?: Date | string | null; checkoutPendingUntil?: Date | string | null; reconciliationRequired?: boolean | null }, now = new Date()) {
+export function voxaNormalizedBillingState(input?: { status?: string | null; cancelAtPeriodEnd?: boolean | null; graceUntil?: Date | string | null; checkoutPendingUntil?: Date | string | null; reconciliationRequired?: boolean | null; trialStartedAt?: Date | string | null; trialEndsAt?: Date | string | null; trialPlanKey?: string | null }, now = new Date()) {
   if (input?.reconciliationRequired) return 'reconciliation_required';
+  const providerState = input?.status;
+  const hasProviderLifecycle = Boolean(providerState && !['inactive', 'free', 'trial_eligible'].includes(providerState));
+  const eligibleTrialPlanKey = firstVoxaCommercialPlan().key;
+  if (!hasProviderLifecycle && input?.trialPlanKey === eligibleTrialPlanKey && input.trialStartedAt && input.trialEndsAt) {
+    const startsAt = new Date(input.trialStartedAt);
+    const endsAt = new Date(input.trialEndsAt);
+    if (startsAt <= now && endsAt > now) return 'trial_active';
+    if (endsAt <= now) return 'trial_expired';
+  }
   if (input?.checkoutPendingUntil && new Date(input.checkoutPendingUntil) > now) return 'checkout_pending';
-  if (!input?.status || ['inactive', 'free', 'trial_eligible'].includes(input.status)) return 'free';
-  if (input.cancelAtPeriodEnd && ['active', 'trialing'].includes(input.status)) return 'cancel_scheduled';
-  if (input.status === 'past_due') return input.graceUntil && new Date(input.graceUntil) > now ? 'past_due_grace' : 'past_due_blocked';
-  if (['active', 'trialing', 'paused', 'canceled', 'incomplete'].includes(input.status)) return input.status;
-  return input.status === 'unpaid' ? 'past_due_blocked' : 'reconciliation_required';
+  if (!providerState || ['inactive', 'free', 'trial_eligible'].includes(providerState)) return 'free';
+  if (input.cancelAtPeriodEnd && ['active', 'trialing'].includes(providerState)) return 'cancel_scheduled';
+  if (providerState === 'past_due') return input.graceUntil && new Date(input.graceUntil) > now ? 'past_due_grace' : 'past_due_blocked';
+  if (['active', 'trialing', 'paused', 'canceled', 'incomplete'].includes(providerState)) return providerState;
+  return providerState === 'unpaid' ? 'past_due_blocked' : 'reconciliation_required';
 }
 
 export function voxaPaidAccess(normalizedState: string) {
-  return ['active', 'trialing', 'cancel_scheduled', 'past_due_grace'].includes(normalizedState);
+  return ['trial_active', 'active', 'trialing', 'cancel_scheduled', 'past_due_grace'].includes(normalizedState);
 }
 
 export function subscriptionIdFromVoxaInvoice(invoice: Stripe.Invoice) {

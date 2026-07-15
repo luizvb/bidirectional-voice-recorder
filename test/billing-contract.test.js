@@ -16,3 +16,13 @@ test('only provider-funded transcription and AI analysis require Pro', () => {
   assert.match(source, /post\('\/:id\/analyze', requireVoxaPro, analyzeRecording\)/);
   assert.doesNotMatch(source, /get\([^\n]+requireVoxaPro/);
 });
+
+test('billing UI explains no-card trial and required checkout after expiry', () => {
+  const source = readFileSync('src/components/BillingView.tsx', 'utf8');
+  const types = readFileSync('src/platform/types.ts', 'utf8');
+  assert.match(source, /7-day trial active — no card required/);
+  assert.match(source, /Your 7-day trial has ended/);
+  assert.match(source, /Subscribe to continue — card required/);
+  assert.match(types, /trial_active/);
+  assert.match(types, /trial_expired/);
+});
